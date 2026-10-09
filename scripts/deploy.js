@@ -2,12 +2,15 @@ const hre = require("hardhat");
 
 // Parámetros de ejemplo para el deploy. En un caso real, el titular definiría
 // sus propios herederos, porcentajes y período de inactividad (en segundos).
-const INACTIVITY_PERIOD_SECONDS = 60 * 60 * 24 * 365; // 1 año
+const INACTIVITY_PERIOD_SECONDS = Number(process.env.INACTIVITY_PERIOD_SECONDS) || 60 * 60 * 24 * 365; // 1 año
 
 async function main() {
-  const [deployer, heir1, heir2] = await hre.ethers.getSigners();
+  const [deployer, signer1, signer2] = await hre.ethers.getSigners();
 
-  const heirAddresses = [heir1.address, heir2.address];
+  const heirAddresses = [
+    process.env.HEIR_1 || signer1.address,
+    process.env.HEIR_2 || signer2.address,
+  ];
   const percentages = [60, 40];
 
   console.log("Desplegando DigitalInheritance...");

@@ -17,6 +17,7 @@ durante un período configurable.
 - [Seguridad](#seguridad)
 - [Optimización de gas](#optimización-de-gas)
 - [Decisiones de diseño](#decisiones-de-diseño)
+- [Checklist de entrega](#checklist-de-entrega)
 - [Roadmap](#roadmap)
 
 ## ¿Por qué blockchain?
@@ -308,6 +309,40 @@ contrato sin nadie que pueda hacer `heartbeat()` nunca más.
   decidir si `cancelTrigger()` es seguro como para el check de "todos
   cobraron" en `sweepDust()` — antes era `for` sobre el array, ahora es una
   comparación directa, más barata en gas.
+
+## Checklist de entrega
+
+Repos del proyecto:
+
+- **Backend (contratos):** https://github.com/MaximoBaronee/herencia-digital
+- **Frontend (React):** https://github.com/johanriascos7777/front-herencia-digital
+
+Este checklist es el mismo en ambos repos.
+
+**Hecho**
+- [x] Contrato `DigitalInheritance` con CEI, `ReentrancyGuard`, eventos y errores custom.
+- [x] NatSpec completo en `/contracts`.
+- [x] 43 tests unitarios en verde (incluye reentrancia).
+- [x] Scripts `demo`, `demo:cancel` y `deploy` (este último con herederos y plazo por variables de entorno).
+- [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
+
+**Backend (`herencia-digital`)**
+- [ ] Fondear con Sepolia ETH la wallet de despliegue.
+- [ ] Desplegar en Sepolia con `npm run deploy -- --network sepolia`.
+- [ ] Verificar el contrato en Etherscan (requiere `ETHERSCAN_API_KEY`).
+- [ ] Anotar la dirección desplegada en este README.
+- [ ] Reemplazar en el Roadmap la app Android por el frontend web en React.
+
+**Frontend (`front-herencia-digital`)**
+- [ ] Probar el flujo completo con MetaMask contra `npx hardhat node`.
+- [ ] Crear el sistema de diseño en Claude (Sistema de diseño → New design system → Using Claude Code) apuntando a este repo.
+- [ ] Aplicar el diseño con el CSS mínimo necesario.
+- [ ] Configurar Sepolia (`VITE_CHAIN_ID`, `VITE_CHAIN_NAME`, `VITE_CONTRACT_ADDRESS`) y probar contra el contrato desplegado.
+
+**Entrega**
+- [ ] Grabar el video de presentación y demo (máximo 5 minutos, incluyendo el frontend).
+- [ ] Verificar que ambos READMEs expliquen cómo ejecutar y el Roadmap.
+- [ ] Subir los cambios a ambos repos.
 
 ## Roadmap
 
