@@ -245,6 +245,7 @@ contract DigitalInheritance is ReentrancyGuard {
         _setHeirs(heirAddresses, percentages);
     }
 
+    /// @dev Valida y guarda la lista de herederos: sin duplicados, sin dirección cero y con porcentajes que suman 100
     function _setHeirs(address[] memory heirAddresses, uint8[] memory percentages) private {
         uint256 len = heirAddresses.length;
         if (len == 0) revert NoHeirs();

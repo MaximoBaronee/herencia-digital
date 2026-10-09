@@ -6,8 +6,97 @@ Contrato inteligente que custodia ETH y lo distribuye automáticamente entre
 herederos designados si el titular deja de confirmar actividad (heartbeat)
 durante un período configurable.
 
+## 🚀 Puesta en marcha
+
+> 💡 **El "back" no se enciende.** El contrato ya vive en la blockchain de Sepolia y funciona 24/7 sin que tengas nada corriendo:
+> [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code). Este repo lo usas para **compilar, probar y desplegar**.
+
+### 🆕 Primera vez (recién clonado)
+
+```bash
+git clone https://github.com/MaximoBaronee/herencia-digital.git
+cd herencia-digital
+npm install          # 1️⃣ instala Hardhat y OpenZeppelin (requiere Node.js 18+)
+npm test             # 2️⃣ compila solo y corre los 43 tests ✅
+npm run demo         # 3️⃣ opcional: flujo completo en una red local en memoria
+```
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Tengo que compilar aparte? | ❌ No. `npm test` y `npm run demo` compilan solos. Si quieres hacerlo explícito: `npm run compile`. |
+| ¿Necesito `.env`? | ❌ No para tests ni demo. ✅ Solo para **desplegar en Sepolia** (`cp .env.example .env` y completar). |
+| ¿Necesito internet? | Solo para `npm install` y para desplegar o verificar. |
+| ¿Qué carpetas se generan? | `artifacts/`, `cache/` y `node_modules/`. Están ignoradas por git. |
+
+### 🔁 Segunda vez en adelante
+
+| Situación | Qué hacer |
+|---|---|
+| Solo quiero ver que sigue todo bien | `npm test` |
+| Hice `git pull` y cambió `package.json` | `npm install` |
+| Cambié un archivo de `contracts/` | `npm test` (recompila solo) |
+| Quiero una demo sin gastar ETH | `npm run demo` o `npm run demo:cancel` |
+| Quiero un contrato nuevo en Sepolia | `npm run deploy -- --network sepolia` y luego actualizar la dirección en el front |
+
+**🚫 Qué NO hacer**
+- No subas `.env` a git: tiene la clave privada de despliegue.
+- No vuelvas a desplegar "por probar": cada despliegue es **otro contrato con otra dirección**, y el front sigue apuntando al anterior.
+- No esperes que un cambio en `contracts/` actualice el contrato ya desplegado: es **inmutable**. Hay que desplegar uno nuevo.
+- No ejecutes `deposit` ni `heartbeat` con "Added protection" de MetaMask activado (ver [incidencias del front](https://github.com/johanriascos7777/front-herencia-digital#-incidencias)).
+
+### 🚢 Desplegar y verificar en Sepolia
+
+```bash
+cp .env.example .env     # completar SEPOLIA_RPC_URL, PRIVATE_KEY, ETHERSCAN_API_KEY, HEIR_1, HEIR_2
+npm run deploy -- --network sepolia
+```
+
+La wallet de `PRIVATE_KEY` necesita Sepolia ETH y será la **titular** del contrato. `INACTIVITY_PERIOD_SECONDS` (por defecto 1 año) permite fijar un plazo corto para demos, por ejemplo `600`.
+
+### 🧠 ¿Cómo funciona?
+
+Un **testamento automático**: el titular deja ETH en el contrato y confirma cada tanto que sigue activo. Si deja de hacerlo, los herederos cobran solos, sin notarios ni intermediarios.
+
+```
+ 💰 deposit() ──► 💓 heartbeat() ──► ... silencio ... ──► ⏰ plazo vencido
+                                                              │
+                                  ┌───────────────────────────┘
+                                  ▼
+                       🚨 triggerInheritance()   (la ejecuta cualquiera)
+                                  │
+                ┌─────────────────┴──────────────────┐
+                ▼                                    ▼
+      ↩️ cancelTrigger()                    🎁 claim() de cada heredero
+   (solo el titular, y solo si                (cada uno cobra su %,
+    nadie cobró todavía)                       una sola vez)
+```
+
+| Rol | Quién es | Qué puede hacer |
+|---|---|---|
+| 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `cancelTrigger`, `sweepDust` |
+| 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | `claim()` cuando la herencia está activada |
+| 👀 **Observador** | cualquier otra wallet | `triggerInheritance()` si el plazo venció, y leer el estado |
+
+### 🎬 Ejemplo: el caso de Ana
+
+> Ana (titular) deja **1 ETH** para sus hermanos **Bruno (60 %)** y **Carla (40 %)**, con un plazo de **30 días** de inactividad.
+
+| Día | Qué pasa | Estado |
+|:-:|---|:-:|
+| 0 | Ana despliega el contrato y llama `deposit()` con 1 ETH | 🟢 ACTIVE |
+| 10 | Ana llama `heartbeat()`: el reloj de 30 días **vuelve a empezar** | 🟢 ACTIVE |
+| 40 | Ana no responde: pasaron más de 30 días desde su último heartbeat | 🟡 plazo vencido |
+| 41 | Carla (o cualquiera) llama `triggerInheritance()`: el balance de 1 ETH queda congelado | 🔴 TRIGGERED |
+| 41 | Bruno llama `claim()` y recibe **0.6 ETH** | 🔴 TRIGGERED |
+| 42 | Carla llama `claim()` y recibe **0.4 ETH** | 🔴 TRIGGERED |
+
+**¿Y si fue una falsa alarma?** Si Ana vuelve entre el día 41 y el momento en que alguien cobra, llama `cancelTrigger()` y todo regresa a 🟢 ACTIVE sin perder fondos. Pero **en cuanto un heredero cobra, ya no hay vuelta atrás**.
+
+---
+
 ## Índice
 
+- [🚀 Puesta en marcha](#-puesta-en-marcha)
 - [¿Por qué blockchain?](#por-qué-blockchain)
 - [Arquitectura](#arquitectura)
 - [Instalación](#instalación)
@@ -171,6 +260,8 @@ cp .env.example .env
 npm run deploy -- --network sepolia
 ```
 
+Despliegue actual en Sepolia: [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) (titular `0xB4c296D61f50CEdF5b68082A9cd7012eCb1Eb697`, 2 herederos 60/40, plazo de inactividad de 600 s). Código verificado en [Etherscan](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code).
+
 ## Seguridad
 
 - **Checks-Effects-Interactions**: en `claim()`, `withdraw()` y `sweepDust()`
@@ -327,11 +418,11 @@ Este checklist es el mismo en ambos repos.
 - [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
 
 **Backend (`herencia-digital`)**
-- [ ] Fondear con Sepolia ETH la wallet de despliegue.
-- [ ] Desplegar en Sepolia con `npm run deploy -- --network sepolia`.
-- [ ] Verificar el contrato en Etherscan (requiere `ETHERSCAN_API_KEY`).
-- [ ] Anotar la dirección desplegada en este README.
-- [ ] Reemplazar en el Roadmap la app Android por el frontend web en React.
+- [x] Fondear con Sepolia ETH la wallet de despliegue.
+- [x] Desplegar en Sepolia con `npm run deploy -- --network sepolia`.
+- [x] Verificar el contrato en Etherscan (requiere `ETHERSCAN_API_KEY`).
+- [x] Anotar la dirección desplegada en este README.
+- [x] Reemplazar en el Roadmap la app Android por el frontend web en React.
 
 **Frontend (`front-herencia-digital`)**
 - [ ] Probar el flujo completo con MetaMask contra `npx hardhat node`.
@@ -351,6 +442,8 @@ Este checklist es el mismo en ambos repos.
 - [x] Tests unitarios, incluyendo test de reentrancia.
 - [x] Scripts de deploy e interacción (demo end-to-end).
 - [x] Documentación técnica.
+- [x] Frontend web mínimo (React + ethers) en repo aparte.
+- [x] Despliegue y verificación en Sepolia.
 
 ### Fase 2 — Próximas funciones
 - Soporte para **ERC-20 y ERC-721** además de ETH nativo (depósito y reclamo
@@ -394,13 +487,22 @@ por defecto:
   automatización, `forceDeliverUnclaimed()` es el paso siguiente para el
   reparto en sí.
 
-**App móvil nativa para Android (Kotlin + Jetpack Compose).**
-Las pantallas ya están diseñadas en Figma sobre el kit de Material Design 3
-re-skineado (dark mode, acento violeta solo en estados activos, tipografía
-monoespaciada para montos/direcciones/countdown), con dashboard según rol
-detectado por wallet conectada (Titular / Heredero / Observador) y conexión
-vía WalletConnect. Reemplaza la idea original de frontend web
-(React/Next.js): se prioriza una app nativa de Android en vez de una PWA.
+**Frontend web (React + Vite + ethers v6).**
+Reemplaza la idea original de una app móvil nativa para Android: una web
+liviana llega a más gente (titular, herederos y observadores solo necesitan
+un navegador con MetaMask) y se integra directo con el contrato ya
+desplegado. La primera versión ya está implementada en
+[`front-herencia-digital`](https://github.com/johanriascos7777/front-herencia-digital):
+conexión de wallet, detección de rol por cuenta conectada (Titular / Heredero /
+Observador), dashboard con estado, balance, cuenta regresiva y herederos, y
+las acciones `deposit`, `withdraw`, `heartbeat`, `triggerInheritance`,
+`cancelTrigger` y `claim`. Próximos pasos del front:
+- **WalletConnect** y soporte de más wallets además de MetaMask.
+- **Aviso al heredero**: notificación (correo o push) cuando se activa la
+  herencia, para que no dependa de que se entere por su cuenta.
+- **Varias herencias por titular**, apoyado en el `InheritanceFactory`
+  descrito más abajo.
+- **PWA o app móvil** sobre la misma base si el uso lo justifica.
 
 **Factory de contratos (`InheritanceFactory`) para onboarding sin fricción.**
 Hoy crear una herencia requiere correr `scripts/deploy.js` con Hardhat — no
