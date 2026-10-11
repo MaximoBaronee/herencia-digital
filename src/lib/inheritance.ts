@@ -107,6 +107,13 @@ export function formatDuration(totalSeconds: number) {
 }
 
 export function decodeError(error: unknown): string {
-  const e = error as { reason?: string; shortMessage?: string; revert?: { name?: string }; message?: string };
-  return e.revert?.name ?? e.reason ?? e.shortMessage ?? e.message ?? "Error desconocido";
+  const e = error as {
+    reason?: string;
+    shortMessage?: string;
+    revert?: { name?: string };
+    message?: string;
+    error?: { message?: string };
+    info?: { error?: { message?: string } };
+  };
+  return e.revert?.name ?? e.reason ?? e.info?.error?.message ?? e.error?.message ?? e.shortMessage ?? e.message ?? "Error desconocido";
 }
