@@ -27,6 +27,7 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [readAt, setReadAt] = useState(() => Date.now());
 
@@ -44,6 +45,25 @@ export default function App() {
       setMessage(null);
     } catch (error) {
       setMessage({ kind: "error", text: decodeError(error) });
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.ethereum) return;
+    setDisconnecting(true);
+    setMessage(null);
+    try {
+      await window.ethereum.request({
+        method: "wallet_revokePermissions",
+        params: [{ eth_accounts: {} }],
+      });
+      setContract(null);
+      setAccount("");
+      setSnapshot(null);
+    } catch (error) {
+      setMessage({ kind: "error", text: decodeError(error) });
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -101,7 +121,12 @@ export default function App() {
           <Badge>{CHAIN_NAME}</Badge>
           {snapshot && <Badge tone="accent">{ROLE_LABEL[snapshot.role]}</Badge>}
           {account ? (
-            <span className="mono muted">{shortAddress(account)}</span>
+            <>
+              <span className="mono muted">{shortAddress(account)}</span>
+              <Button disabled={disconnecting} onClick={disconnect}>
+                {disconnecting ? "Desconectando..." : "Desconectar"}
+              </Button>
+            </>
           ) : (
             <Button variant="primary" onClick={connect}>
               Conectar wallet
