@@ -51,7 +51,9 @@ cp .env.example .env     # completar SEPOLIA_RPC_URL, PRIVATE_KEY, ETHERSCAN_API
 npm run deploy -- --network sepolia
 ```
 
-La wallet de `PRIVATE_KEY` necesita Sepolia ETH y será la **titular** del contrato. `INACTIVITY_PERIOD_SECONDS` (por defecto 1 año) permite fijar un plazo corto para demos, por ejemplo `600`.
+La wallet de `PRIVATE_KEY` necesita Sepolia ETH y será la **titular** del contrato. `INACTIVITY_PERIOD_SECONDS` (por defecto 1 año) permite fijar un plazo corto para demos, por ejemplo `600`. `HEIR_PERCENTAGES` (por defecto `60,40`) define el porcentaje de cada heredero, en el mismo orden.
+
+El script valida los parámetros antes de gastar gas y corta con un mensaje claro si algo falta: en una red que no sea la local, `HEIR_1` y `HEIR_2` son obligatorios (no hay cuentas de prueba para usar como herederos), las direcciones deben ser válidas, distintas entre sí y distintas de la dirección cero, los porcentajes deben sumar 100 y el plazo debe ser un entero positivo.
 
 ### 🧠 ¿Cómo funciona?
 
@@ -256,7 +258,7 @@ revierte con `ClaimsAlreadyStarted()`.
 
 ```bash
 cp .env.example .env
-# completar SEPOLIA_RPC_URL y PRIVATE_KEY en .env
+# completar SEPOLIA_RPC_URL, PRIVATE_KEY, HEIR_1 y HEIR_2 en .env (ver "Desplegar y verificar en Sepolia")
 npm run deploy -- --network sepolia
 ```
 
@@ -270,8 +272,10 @@ Despliegue actual en Sepolia: [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](htt
 - **ReentrancyGuard**: `nonReentrant` en las tres funciones que mueven valor,
   como segunda capa de defensa además del CEI. Probado explícitamente con un
   contrato atacante en los tests.
-- **Control de acceso**: `onlyOwner` (OpenZeppelin) en todas las funciones
-  administrativas. `triggerInheritance()` es intencionalmente pública —
+- **Control de acceso**: modificador `onlyOwner` propio sobre un
+  `address public immutable owner` fijado en el deploy (se reemplazó el
+  `Ownable` de OpenZeppelin, ver [Gas](#optimización-de-gas)) en todas las
+  funciones administrativas. `triggerInheritance()` es intencionalmente pública —
   cualquiera puede vigilar el contrato y dispararla, lo cual evita depender
   de un oráculo o de que el titular haga algo.
 - **Errores custom**: además del ahorro de gas, dan información estructurada
