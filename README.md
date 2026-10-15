@@ -17,7 +17,7 @@ durante un período configurable.
 git clone https://github.com/MaximoBaronee/herencia-digital.git
 cd herencia-digital
 npm install          # 1️⃣ instala Hardhat y OpenZeppelin (requiere Node.js 18+)
-npm test             # 2️⃣ compila solo y corre los 43 tests ✅
+npm test             # 2️⃣ compila solo y corre los 71 tests ✅
 npm run demo         # 3️⃣ opcional: flujo completo en una red local en memoria
 ```
 
@@ -136,6 +136,8 @@ contracts/
   DigitalInheritance.sol      # contrato principal
   mocks/
     ReentrancyAttacker.sol    # mock usado solo en tests de seguridad
+    RejectingHeir.sol         # mock: heredero que rechaza ETH (claim falla, sweep bloqueado)
+    TriggerAndClaimHeir.sol   # mock: heredero que dispara y reclama en una sola tx
 test/
   DigitalInheritance.test.js  # suite de tests unitarios (Hardhat + Chai)
 scripts/
@@ -209,18 +211,19 @@ npm test
 
 La suite (`test/DigitalInheritance.test.js`) cubre:
 
-- Deploy y validación de parámetros iniciales (porcentajes, herederos duplicados, dirección cero).
-- Depósitos (por `deposit()` y por `receive()`), y que un tercero no pueda depositar.
-- Heartbeat: quién puede llamarlo y cómo pospone el trigger.
-- Alta/baja de herederos y cambio del período de inactividad.
+- Deploy y validación de parámetros iniciales (porcentajes, herederos duplicados, dirección cero, arrays de distinto largo) y estado inicial.
+- Depósitos (por `deposit()` y por `receive()`), que un tercero no pueda depositar, y que un depósito en `TRIGGERED` no altere el snapshot.
+- Heartbeat: quién puede llamarlo, cómo pospone el trigger y que no se pueda usar en `TRIGGERED`.
+- Alta/baja de herederos y cambio del período de inactividad: que los herederos reemplazados dejen de serlo, que nada se pueda cambiar en `TRIGGERED`, y que un período de 0 habilite el trigger de inmediato (no hay cota mínima).
 - Retiro de fondos por el titular, incluyendo límites y que se bloquee tras el trigger.
-- `triggerInheritance()`: que sea permissionless, que respete el plazo, que no se pueda disparar dos veces.
-- `cancelTrigger()`: que funcione solo si nadie reclamó, que reinicie `lastHeartbeat`, y que quede bloqueada para siempre en cuanto hay un primer `claim()`.
-- `claim()`: reparto proporcional correcto, anti doble-reclamo, que solo reclamen herederos.
+- `triggerInheritance()`: que sea permissionless, que respete el plazo (incluido el límite exacto del deadline y los segundos restantes que informa `TooEarly`), que no se pueda disparar dos veces, y que funcione con balance 0.
+- `cancelTrigger()`: que funcione solo si nadie reclamó, que reinicie `lastHeartbeat`, que quede bloqueada para siempre en cuanto hay un primer `claim()`, y que un heredero contrato (`TriggerAndClaimHeir`) pueda disparar y reclamar en la misma transacción, sin dejar ventana real de cancelación.
+- `claim()`: reparto proporcional correcto e independiente del orden de los reclamos, anti doble-reclamo, que solo reclamen herederos, heredero con 0 %, y un heredero cuya dirección rechaza ETH (`RejectingHeir`): su `claim()` revierte con `TransferFailed` y `sweepDust()` queda bloqueado.
 - **Reentrancia**: un contrato atacante (`ReentrancyAttacker`) intenta reclamar dos veces desde su `receive()`; el test verifica que la transacción revierte gracias al patrón Checks-Effects-Interactions + `ReentrancyGuard`.
-- `sweepDust()`: recuperación del resto por redondeo entero, solo después de que todos reclamaron.
+- `sweepDust()`: recuperación del resto por redondeo entero, solo después de que todos reclamaron; incluye lo depositado después del trigger y no toca el ETH que entra al contrato sin pasar por `receive()`.
+- Vistas: `getHeirs`, `percentageOf`, `isHeir`, `isTriggerable` y `timeUntilTrigger`.
 
-43 tests, todos en verde (incluye la suite de `cancelTrigger()`).
+71 tests, todos en verde. Cobertura del contrato: 100 % de líneas, sentencias y funciones.
 
 ## Cómo correr la demo
 
@@ -413,7 +416,7 @@ Este checklist es el mismo en ambos repos.
 **Hecho**
 - [x] Contrato `DigitalInheritance` con CEI, `ReentrancyGuard`, eventos y errores custom.
 - [x] NatSpec completo en `/contracts`.
-- [x] 43 tests unitarios en verde (incluye reentrancia).
+- [x] 71 tests unitarios en verde (incluye reentrancia).
 - [x] Scripts `demo`, `demo:cancel` y `deploy` (este último con herederos y plazo por variables de entorno).
 - [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
 
