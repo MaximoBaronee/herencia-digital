@@ -24,7 +24,7 @@ npm run demo         # 3️⃣ opcional: flujo completo en una red local en memo
 | Pregunta | Respuesta |
 |---|---|
 | ¿Tengo que compilar aparte? | ❌ No. `npm test` y `npm run demo` compilan solos. Si quieres hacerlo explícito: `npm run compile`. |
-| ¿Necesito `.env`? | ❌ No para tests ni demo. ✅ Solo para **desplegar en Sepolia** (`cp .env.example .env` y completar). |
+| ¿Necesito `.env`? | ❌ No para tests ni demo. ✅ Solo para **desplegar en Sepolia**: ver [Configurar el `.env`](#-configurar-el-env-solo-para-desplegar). |
 | ¿Necesito internet? | Solo para `npm install` y para desplegar o verificar. |
 | ¿Qué carpetas se generan? | `artifacts/`, `cache/` y `node_modules/`. Están ignoradas por git. |
 
@@ -40,21 +40,54 @@ npm run demo         # 3️⃣ opcional: flujo completo en una red local en memo
 | La verificación falló o cargué la API key después | `npm run verify -- --network sepolia` (no redespliega) |
 
 **🚫 Qué NO hacer**
-- No subas `.env` a git: tiene la clave privada de despliegue.
+- No subas `.env` a git: tiene la clave privada del titular. Ya está en `.gitignore`, igual que sus variantes (`.env.local`, etc.).
 - No vuelvas a desplegar "por probar": cada despliegue es **otro contrato con otra dirección**, y el front sigue apuntando al anterior.
 - No esperes que un cambio en `contracts/` actualice el contrato ya desplegado: es **inmutable**. Hay que desplegar uno nuevo.
 - No ejecutes `deposit` ni `heartbeat` con "Added protection" de MetaMask activado (ver [incidencias del front](https://github.com/johanriascos7777/front-herencia-digital#-incidencias)).
 
-### 🚢 Desplegar y verificar en Sepolia
+### 🔑 Configurar el `.env` (solo para desplegar)
+
+El `.env` guarda los datos para desplegar en Sepolia. Está en `.gitignore`, así que **no se sube a GitHub**. `.env.example` es la plantilla vacía que sí está en el repo.
 
 ```bash
-cp .env.example .env     # completar SEPOLIA_RPC_URL, PRIVATE_KEY, ETHERSCAN_API_KEY, HEIR_1, HEIR_2
+cp .env.example .env     # solo la primera vez; después se completa el .env
+```
+
+**Hacen falta tres cuentas**, y pueden estar en la misma billetera de MetaMask (menú de cuentas → *Añadir cuenta*):
+
+| Cuenta | Qué hace | Qué va al `.env` |
+|---|---|---|
+| 👑 Titular | Despliega los contratos y queda como **owner** para siempre. Deposita, hace heartbeat y retira desde el front. | Su **clave privada**, en `PRIVATE_KEY` |
+| 👤 Heredero 1 | Cobra su parte con "Reclamar mi parte" en el front | Solo su **dirección**, en `HEIR_1` |
+| 👤 Heredero 2 | Igual que el heredero 1 | Solo su **dirección**, en `HEIR_2` |
+
+Solo el titular necesita pedir Sepolia ETH a un faucet. Después le puede mandar un poco a cada heredero para el gas del reclamo; 0.01 ETH por heredero sobra.
+
+**Qué poner en cada variable:**
+
+| Variable | ¿Obligatoria? | Qué poner | De dónde sale |
+|---|:-:|---|---|
+| `PRIVATE_KEY` | ✅ | Clave privada del titular, con o sin `0x` adelante | MetaMask → cuenta titular → ⋮ → *Detalles de la cuenta* → *Mostrar clave privada* (el nombre exacto varía según la versión) |
+| `ETHERSCAN_API_KEY` | ✅ | API key para verificar los contratos | [etherscan.io/myapikey](https://etherscan.io/myapikey): crear cuenta gratis → *Add* |
+| `HEIR_1` | ✅ | Dirección del heredero 1: empieza con `0x` y tiene 42 caracteres | MetaMask → copiar la dirección de esa cuenta |
+| `HEIR_2` | ✅ | Dirección del heredero 2, distinta de la anterior | Igual que `HEIR_1` |
+| `SEPOLIA_RPC_URL` | — | Nodo de Sepolia. Si queda vacío se usa uno público | Alchemy o Infura (gratis), solo si el público falla |
+| `HEIR_PERCENTAGES` | — | Porcentajes separados por coma, en el orden de los herederos. Vacío = `60,40` | — |
+| `INACTIVITY_PERIOD_SECONDS` | — | Plazo de inactividad en segundos. Vacío = 1 año. Para la demo: `600` | — |
+
+> ⚠️ **Usar como titular una cuenta solo de pruebas, nunca una con fondos reales.** Quien tenga esa clave controla la cuenta y el contrato. No compartirla por chat ni pegarla en otro archivo. Si el proyecto está en una carpeta sincronizada (OneDrive, Dropbox, Google Drive), el `.env` también se copia a esa nube: otra razón para usar una cuenta de pruebas.
+
+**¿Quién es el owner?** La cuenta de `PRIVATE_KEY`. El constructor guarda como titular a quien firma el deploy, y no se puede cambiar después. Por eso la clave del `.env` tiene que ser la de la cuenta con la que después se va a depositar y hacer heartbeat desde el front. `InheritanceWatcher` no tiene owner.
+
+### 🚢 Desplegar y verificar en Sepolia
+
+Con el `.env` completo:
+
+```bash
 npm run deploy -- --network sepolia
 ```
 
-La wallet de `PRIVATE_KEY` necesita Sepolia ETH y será la **titular** del contrato. `INACTIVITY_PERIOD_SECONDS` (por defecto 1 año) permite fijar un plazo corto para demos, por ejemplo `600`. `HEIR_PERCENTAGES` (por defecto `60,40`) define el porcentaje de cada heredero, en el mismo orden. Cada variable está explicada en `.env.example`.
-
-El script valida los parámetros antes de gastar gas y corta con un mensaje claro si algo falta: en una red que no sea la local, `HEIR_1` y `HEIR_2` son obligatorios (no hay cuentas de prueba para usar como herederos), las direcciones deben ser válidas, distintas entre sí y distintas de la dirección cero, los porcentajes deben sumar 100 y el plazo debe ser un entero positivo.
+Antes de gastar gas, el script valida todo y corta con un mensaje claro si algo falta: la clave del titular, saldo de Sepolia ETH, `HEIR_1` y `HEIR_2`, direcciones válidas y distintas entre sí, porcentajes que sumen 100 y un plazo entero positivo.
 
 Con los parámetros validados, el script:
 
@@ -305,7 +338,7 @@ revierte con `ClaimsAlreadyStarted()`.
 
 ```bash
 cp .env.example .env
-# completar SEPOLIA_RPC_URL, PRIVATE_KEY, ETHERSCAN_API_KEY, HEIR_1 y HEIR_2 en .env (ver "Desplegar y verificar en Sepolia")
+# completar PRIVATE_KEY, ETHERSCAN_API_KEY, HEIR_1 y HEIR_2 en .env (ver "Configurar el .env")
 npm run deploy -- --network sepolia
 ```
 

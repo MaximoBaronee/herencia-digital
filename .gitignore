@@ -6,3 +6,7 @@ gas-report.txt
 artifacts
 cache
 typechain-types
+
+# Variantes de .env (.env.local, .env.sepolia, ...) tampoco se suben; la plantilla sí
+.env.*
+!.env.example
