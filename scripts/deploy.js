@@ -87,6 +87,14 @@ async function main() {
   const network = hre.network.name;
   const isLocalNetwork = network === "hardhat" || network === "localhost";
 
+  // Sin PRIVATE_KEY la red queda sin cuentas: no hay quién firme el deploy
+  if (!deployer) {
+    throw new Error(
+      `No hay cuenta para desplegar en "${network}": falta PRIVATE_KEY en .env ` +
+        "(la clave privada de la cuenta titular)."
+    );
+  }
+
   // En la red local se pueden usar cuentas de prueba como herederos de ejemplo.
   // En cualquier otra red (Sepolia, etc.) solo existe la cuenta de PRIVATE_KEY,
   // así que los herederos tienen que venir por variables de entorno.
@@ -105,12 +113,25 @@ async function main() {
 
   validateParams(heirAddresses, percentages, INACTIVITY_PERIOD_SECONDS);
 
+  const balance = await hre.ethers.provider.getBalance(deployer.address);
+
   console.log("Desplegando DigitalInheritance + InheritanceWatcher...");
   console.log("Red:", network);
-  console.log("Titular:", deployer.address);
+  console.log("Titular (owner):", deployer.address);
+  console.log("Saldo del titular:", hre.ethers.formatEther(balance), "ETH");
   console.log("Herederos:", heirAddresses, "Porcentajes:", percentages);
   console.log("Período de inactividad (seg):", INACTIVITY_PERIOD_SECONDS);
   console.log();
+
+  if (balance === 0n) {
+    throw new Error(
+      `La cuenta titular ${deployer.address} no tiene ETH en "${network}": ` +
+        "hay que pedir Sepolia ETH en un faucet antes de desplegar."
+    );
+  }
+  if (!isLocalNetwork && !process.env.ETHERSCAN_API_KEY) {
+    console.warn("Aviso: falta ETHERSCAN_API_KEY, los contratos se van a desplegar sin verificar.\n");
+  }
 
   const inheritance = await deployContract("DigitalInheritance", [
     INACTIVITY_PERIOD_SECONDS,
