@@ -1,9 +1,14 @@
 const hre = require("hardhat");
+const { saveDeployment, verifyDeployment, explorerUrl } = require("./lib/deployments");
 
 // Parámetros de ejemplo para el deploy. En un caso real, el titular definiría
 // sus propios herederos, porcentajes y período de inactividad (en segundos).
 const INACTIVITY_PERIOD_SECONDS = Number(process.env.INACTIVITY_PERIOD_SECONDS) || 60 * 60 * 24 * 365; // 1 año
 const HEIR_PERCENTAGES = (process.env.HEIR_PERCENTAGES || "60,40").split(",").map((p) => Number(p.trim()));
+
+// Bloques a esperar en una red pública antes de verificar, para que Etherscan
+// ya tenga indexado el bytecode de los contratos recién desplegados.
+const CONFIRMATIONS = 5;
 
 // Replica en el script las mismas validaciones que hace el constructor del
 // contrato, para fallar con un mensaje claro antes de gastar gas en un deploy
@@ -42,16 +47,52 @@ function validateParams(heirAddresses, percentages, inactivityPeriod) {
   }
 }
 
+async function deployContract(name, args) {
+  const Factory = await hre.ethers.getContractFactory(name);
+  const contract = await Factory.deploy(...args);
+  await contract.waitForDeployment();
+  const address = await contract.getAddress();
+  console.log(`${name} desplegado en: ${address}`);
+  return { name, contract, address, args };
+}
+
+// Espera las confirmaciones y arma el registro de un contrato para deployments/<red>.json
+async function deploymentRecord({ name, contract, address, args }) {
+  const receipt = await contract.deploymentTransaction().wait(CONFIRMATIONS);
+  return {
+    address,
+    contract: `contracts/${name}.sol:${name}`,
+    constructorArguments: args,
+    transactionHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
+  };
+}
+
+function printNextSteps(network, inheritanceAddress, watcherAddress) {
+  console.log("\n=== Próximos pasos ===");
+  const inheritanceUrl = explorerUrl(network, inheritanceAddress);
+  if (inheritanceUrl) {
+    console.log("Código verificado:");
+    console.log("  DigitalInheritance:", inheritanceUrl);
+    console.log("  InheritanceWatcher:", explorerUrl(network, watcherAddress));
+    console.log(`Chainlink Automation: registrar un upkeep "Custom logic" con target ${watcherAddress}`);
+  }
+  console.log("Variables para el .env.local del front:");
+  console.log(`  VITE_CONTRACT_ADDRESS=${inheritanceAddress}`);
+  console.log(`  VITE_WATCHER_ADDRESS=${watcherAddress}`);
+}
+
 async function main() {
   const [deployer, signer1, signer2] = await hre.ethers.getSigners();
-  const isLocalNetwork = hre.network.name === "hardhat" || hre.network.name === "localhost";
+  const network = hre.network.name;
+  const isLocalNetwork = network === "hardhat" || network === "localhost";
 
   // En la red local se pueden usar cuentas de prueba como herederos de ejemplo.
   // En cualquier otra red (Sepolia, etc.) solo existe la cuenta de PRIVATE_KEY,
   // así que los herederos tienen que venir por variables de entorno.
   if (!isLocalNetwork && (!process.env.HEIR_1 || !process.env.HEIR_2)) {
     throw new Error(
-      `En la red "${hre.network.name}" hay que definir HEIR_1 y HEIR_2 en .env: ` +
+      `En la red "${network}" hay que definir HEIR_1 y HEIR_2 en .env: ` +
         "no hay cuentas de prueba para usar como herederos."
     );
   }
@@ -64,21 +105,44 @@ async function main() {
 
   validateParams(heirAddresses, percentages, INACTIVITY_PERIOD_SECONDS);
 
-  console.log("Desplegando DigitalInheritance...");
-  console.log("Red:", hre.network.name);
+  console.log("Desplegando DigitalInheritance + InheritanceWatcher...");
+  console.log("Red:", network);
   console.log("Titular:", deployer.address);
   console.log("Herederos:", heirAddresses, "Porcentajes:", percentages);
   console.log("Período de inactividad (seg):", INACTIVITY_PERIOD_SECONDS);
+  console.log();
 
-  const Factory = await hre.ethers.getContractFactory("DigitalInheritance");
-  const contract = await Factory.deploy(
+  const inheritance = await deployContract("DigitalInheritance", [
     INACTIVITY_PERIOD_SECONDS,
     heirAddresses,
-    percentages
-  );
-  await contract.waitForDeployment();
+    percentages,
+  ]);
+  // El watcher vigila la herencia recién creada; es el contrato que se registra en Chainlink Automation
+  const watcher = await deployContract("InheritanceWatcher", [inheritance.address]);
 
-  console.log("\nDigitalInheritance desplegado en:", await contract.getAddress());
+  if (!isLocalNetwork) {
+    console.log(`\nEsperando ${CONFIRMATIONS} confirmaciones antes de verificar...`);
+    const deployment = {
+      network,
+      chainId: Number((await hre.ethers.provider.getNetwork()).chainId),
+      deployer: deployer.address,
+      deployedAt: new Date().toISOString(),
+      contracts: {
+        DigitalInheritance: await deploymentRecord(inheritance),
+        InheritanceWatcher: await deploymentRecord(watcher),
+      },
+    };
+    console.log("Datos del despliegue guardados en", saveDeployment(deployment));
+
+    if (process.env.ETHERSCAN_API_KEY) {
+      await verifyDeployment(hre, deployment);
+    } else {
+      console.log("\nFalta ETHERSCAN_API_KEY en .env: los contratos quedaron desplegados pero sin verificar.");
+      console.log(`Cuando la tengas: npm run verify -- --network ${network}`);
+    }
+  }
+
+  printNextSteps(network, inheritance.address, watcher.address);
 }
 
 main().catch((error) => {

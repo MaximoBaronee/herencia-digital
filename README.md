@@ -16,8 +16,8 @@ durante un período configurable.
 ```bash
 git clone https://github.com/MaximoBaronee/herencia-digital.git
 cd herencia-digital
-npm install          # 1️⃣ instala Hardhat y OpenZeppelin (requiere Node.js 18+)
-npm test             # 2️⃣ compila solo y corre los 71 tests ✅
+npm install          # 1️⃣ instala Hardhat, OpenZeppelin y Chainlink (requiere Node.js 18+)
+npm test             # 2️⃣ compila solo y corre los 83 tests ✅
 npm run demo         # 3️⃣ opcional: flujo completo en una red local en memoria
 ```
 
@@ -36,7 +36,8 @@ npm run demo         # 3️⃣ opcional: flujo completo en una red local en memo
 | Hice `git pull` y cambió `package.json` | `npm install` |
 | Cambié un archivo de `contracts/` | `npm test` (recompila solo) |
 | Quiero una demo sin gastar ETH | `npm run demo` o `npm run demo:cancel` |
-| Quiero un contrato nuevo en Sepolia | `npm run deploy -- --network sepolia` y luego actualizar la dirección en el front |
+| Quiero contratos nuevos en Sepolia | `npm run deploy -- --network sepolia` (despliega y verifica los dos) y luego actualizar las direcciones en el front |
+| La verificación falló o cargué la API key después | `npm run verify -- --network sepolia` (no redespliega) |
 
 **🚫 Qué NO hacer**
 - No subas `.env` a git: tiene la clave privada de despliegue.
@@ -51,9 +52,29 @@ cp .env.example .env     # completar SEPOLIA_RPC_URL, PRIVATE_KEY, ETHERSCAN_API
 npm run deploy -- --network sepolia
 ```
 
-La wallet de `PRIVATE_KEY` necesita Sepolia ETH y será la **titular** del contrato. `INACTIVITY_PERIOD_SECONDS` (por defecto 1 año) permite fijar un plazo corto para demos, por ejemplo `600`. `HEIR_PERCENTAGES` (por defecto `60,40`) define el porcentaje de cada heredero, en el mismo orden.
+La wallet de `PRIVATE_KEY` necesita Sepolia ETH y será la **titular** del contrato. `INACTIVITY_PERIOD_SECONDS` (por defecto 1 año) permite fijar un plazo corto para demos, por ejemplo `600`. `HEIR_PERCENTAGES` (por defecto `60,40`) define el porcentaje de cada heredero, en el mismo orden. Cada variable está explicada en `.env.example`.
 
 El script valida los parámetros antes de gastar gas y corta con un mensaje claro si algo falta: en una red que no sea la local, `HEIR_1` y `HEIR_2` son obligatorios (no hay cuentas de prueba para usar como herederos), las direcciones deben ser válidas, distintas entre sí y distintas de la dirección cero, los porcentajes deben sumar 100 y el plazo debe ser un entero positivo.
+
+Con los parámetros validados, el script:
+
+1. Despliega `DigitalInheritance` y después `InheritanceWatcher`, apuntando al primero.
+2. Espera 5 confirmaciones y guarda direcciones, argumentos del constructor y hashes en `deployments/sepolia.json`.
+3. Si hay `ETHERSCAN_API_KEY`, verifica los dos contratos en Etherscan. Si la verificación falla o la key se carga después, `npm run verify -- --network sepolia` la reintenta leyendo `deployments/sepolia.json`, sin redesplegar.
+4. Imprime las URLs del código verificado y las variables para el `.env.local` del front.
+
+### ⛓️ Automatizar el trigger con Chainlink Automation
+
+`InheritanceWatcher` implementa la interfaz de Chainlink Automation, así que la herencia se puede activar sola apenas vence el plazo, sin que nadie tenga que estar mirando. En Sepolia es gratis: se paga con LINK de testnet.
+
+1. Pedir LINK de testnet para la wallet titular en [faucets.chain.link](https://faucets.chain.link/sepolia).
+2. En [automation.chain.link](https://automation.chain.link), conectar la wallet y elegir **Register new Upkeep** → **Custom logic**.
+3. Como contrato, pegar la dirección de `InheritanceWatcher`, no la de `DigitalInheritance`. El *check data* queda vacío.
+4. Completar nombre, gas limit y saldo inicial de LINK, y confirmar en MetaMask. `performUpkeep()` usa unos 60.000 de gas, así que el gas limit que sugiere la app alcanza.
+
+Desde ese momento, la red de Chainlink simula `checkUpkeep()` en cada bloque y, cuando devuelve `true`, ejecuta `performUpkeep()`, que llama a `triggerInheritance()`. En Etherscan, esa transacción muestra el evento `TriggeredViaWatcher` del watcher y el `InheritanceTriggered` de la herencia, con el watcher como `triggeredBy`.
+
+> ⚠️ Con un plazo de 600 s, el upkeep activa la herencia 10 minutos después del último heartbeat. Conviene registrarlo después de depositar, y recién cuando se quiere mostrar el trigger automático. La app de Chainlink permite pausar el upkeep mientras tanto.
 
 ### 🧠 ¿Cómo funciona?
 
@@ -64,7 +85,7 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
                                                               │
                                   ┌───────────────────────────┘
                                   ▼
-                       🚨 triggerInheritance()   (la ejecuta cualquiera)
+                       🚨 triggerInheritance()   (cualquiera, o Chainlink vía InheritanceWatcher)
                                   │
                 ┌─────────────────┴──────────────────┐
                 ▼                                    ▼
@@ -78,6 +99,7 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
 | 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `cancelTrigger`, `sweepDust` |
 | 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | `claim()` cuando la herencia está activada |
 | 👀 **Observador** | cualquier otra wallet | `triggerInheritance()` si el plazo venció, y leer el estado |
+| 🤖 **Automatización** | Chainlink Automation, a través de `InheritanceWatcher` | `performUpkeep()` → `triggerInheritance()` apenas vence el plazo |
 
 ### 🎬 Ejemplo: el caso de Ana
 
@@ -135,23 +157,31 @@ el `inactivityPeriod` es un parámetro rígido que no distingue "me morí" de
 
 ```
 contracts/
-  DigitalInheritance.sol      # contrato principal
-  mocks/
+  DigitalInheritance.sol      # contrato principal: custodia y reparto
+  InheritanceWatcher.sol      # vigía compatible con Chainlink Automation: llama a triggerInheritance()
+  mocks/                      # solo para tests, no se despliegan
     ReentrancyAttacker.sol    # mock usado solo en tests de seguridad
     RejectingHeir.sol         # mock: heredero que rechaza ETH (claim falla, sweep bloqueado)
     TriggerAndClaimHeir.sol   # mock: heredero que dispara y reclama en una sola tx
 test/
   DigitalInheritance.test.js  # suite de tests unitarios (Hardhat + Chai)
+  InheritanceWatcher.test.js  # tests del watcher e integración entre los dos contratos
 scripts/
-  deploy.js                   # despliegue simple
+  deploy.js                   # despliega DigitalInheritance + InheritanceWatcher y los verifica
+  verify.js                   # reintenta la verificación en Etherscan sin redesplegar
+  lib/deployments.js          # guarda y lee deployments/<red>.json, y verifica
   demo.js                     # flujo completo end-to-end con logs de estado
+  demo-cancel.js              # escenario de falsa alarma con cancelTrigger()
+deployments/
+  <red>.json                  # direcciones, argumentos y hashes (lo genera deploy.js en redes públicas)
 ```
 
 **Flujo principal:**
 
 ```
 deploy → deposit → heartbeat (periódico) → ... inactividad ...
-       → triggerInheritance() → claim() por cada heredero
+       → triggerInheritance() (directo, o InheritanceWatcher vía Chainlink Automation)
+       → claim() por cada heredero
 ```
 
 **Máquina de estados** (`Status`):
@@ -180,11 +210,21 @@ ACTIVE                                       TRIGGERED
 | Errores | Custom errors (`error X()`) en vez de `require(string)` → menor costo de gas y de bytecode |
 | Eventos | `Deposited`, `Heartbeat`, `HeirsUpdated`, `InactivityPeriodUpdated`, `InheritanceTriggered`, `TriggerCancelled`, `Claimed`, `Withdrawn`, `DustSwept` |
 
+### Contrato: `InheritanceWatcher.sol`
+
+| Elemento | Detalle |
+|---|---|
+| Interfaz | `AutomationCompatibleInterface` de `@chainlink/contracts` (`checkUpkeep` / `performUpkeep`) |
+| Storage | Ninguno: solo `DigitalInheritance public immutable inheritance`, fijado en el deploy |
+| Fondos y privilegios | No custodia ETH ni tiene owner. Cualquiera puede llamarlo; quien valida plazo y estado es `DigitalInheritance` |
+| Evento | `TriggeredViaWatcher(caller, timestamp)`, en la misma transacción que el `InheritanceTriggered` de la herencia |
+| Por qué separado | El contrato que custodia los fondos no depende de Chainlink: si la automatización falla, `triggerInheritance()` sigue disponible para cualquiera |
+
 ### Funciones principales
 
 | Función | Quién | Cuándo | Qué hace |
 |---|---|---|---|
-| `deposit()` / `receive()` | titular | `ACTIVE` | deposita ETH |
+| `deposit()` / `receive()` | titular | siempre (en `TRIGGERED` no entra al reparto) | deposita ETH |
 | `heartbeat()` | titular | `ACTIVE` | reinicia el temporizador |
 | `setHeirs()` / `setInactivityPeriod()` | titular | `ACTIVE` | reconfigura herederos/plazo |
 | `withdraw(amount)` | titular | `ACTIVE` | retira fondos |
@@ -192,6 +232,8 @@ ACTIVE                                       TRIGGERED
 | `cancelTrigger()` | titular | `TRIGGERED`, `claimsCount == 0` | vuelve a `ACTIVE`, cuenta como heartbeat |
 | `claim()` | heredero | `TRIGGERED` | cobra su porcentaje, una sola vez |
 | `sweepDust(to)` | titular | `TRIGGERED`, todos ya cobraron | recupera el resto por redondeo |
+| `checkUpkeep()` (watcher) | Chainlink Automation, fuera de la cadena | siempre (es `view`) | devuelve `true` si la herencia ya se puede activar |
+| `performUpkeep()` / `trigger()` (watcher) | cualquiera, normalmente Chainlink Automation | `ACTIVE`, plazo vencido | llama a `triggerInheritance()` |
 
 ## Instalación
 
@@ -201,9 +243,10 @@ Requiere Node.js 18+.
 npm install
 ```
 
-Esto instala Hardhat, `@nomicfoundation/hardhat-toolbox` y
-`@openzeppelin/contracts`. No hace falta configurar nada más para compilar,
-testear o correr la demo local.
+Esto instala Hardhat, `@nomicfoundation/hardhat-toolbox`,
+`@openzeppelin/contracts` y `@chainlink/contracts` (de este último solo se
+usa la interfaz de Automation). No hace falta configurar nada más para
+compilar, testear o correr la demo local.
 
 ## Cómo correr los tests
 
@@ -211,7 +254,7 @@ testear o correr la demo local.
 npm test
 ```
 
-La suite (`test/DigitalInheritance.test.js`) cubre:
+Las suites (`test/DigitalInheritance.test.js` y `test/InheritanceWatcher.test.js`) cubren:
 
 - Deploy y validación de parámetros iniciales (porcentajes, herederos duplicados, dirección cero, arrays de distinto largo) y estado inicial.
 - Depósitos (por `deposit()` y por `receive()`), que un tercero no pueda depositar, y que un depósito en `TRIGGERED` no altere el snapshot.
@@ -224,8 +267,9 @@ La suite (`test/DigitalInheritance.test.js`) cubre:
 - **Reentrancia**: un contrato atacante (`ReentrancyAttacker`) intenta reclamar dos veces desde su `receive()`; el test verifica que la transacción revierte gracias al patrón Checks-Effects-Interactions + `ReentrancyGuard`.
 - `sweepDust()`: recuperación del resto por redondeo entero, solo después de que todos reclamaron; incluye lo depositado después del trigger y no toca el ETH que entra al contrato sin pasar por `receive()`.
 - Vistas: `getHeirs`, `percentageOf`, `isHeir`, `isTriggerable` y `timeUntilTrigger`.
+- `InheritanceWatcher`: `checkUpkeep()` en `false` antes del plazo, después de un heartbeat y una vez activada la herencia, y en `true` apenas vence; `performUpkeep()` y `trigger()` activan la herencia con el watcher como `triggeredBy`; se propagan `TooEarly` e `InvalidState`; el titular puede cancelar un trigger hecho por el watcher; y el flujo completo hasta el reclamo de cada heredero.
 
-71 tests, todos en verde. Cobertura del contrato: 100 % de líneas, sentencias y funciones.
+83 tests, todos en verde. Cobertura de los dos contratos: 100 % de líneas, sentencias y funciones.
 
 ## Cómo correr la demo
 
@@ -237,11 +281,11 @@ Corre `scripts/demo.js` sobre la red local en memoria de Hardhat. Hace todo
 el flujo de punta a punta y va imprimiendo el estado real del contrato en
 cada paso:
 
-1. Deploy con 2 herederos (60% / 40%).
+1. Deploy de `DigitalInheritance` con 2 herederos (60% / 40%) y de su `InheritanceWatcher`.
 2. Depósito de 10 ETH por el titular.
 3. Heartbeat.
-4. Avance del reloj de la red (`evm_increaseTime`) para simular inactividad.
-5. `triggerInheritance()` disparado por un tercero.
+4. Avance del reloj de la red (`evm_increaseTime`) para simular inactividad: `checkUpkeep()` del watcher pasa a `true`.
+5. `performUpkeep()` del watcher, como lo haría Chainlink Automation, que llama a `triggerInheritance()`.
 6. `claim()` de cada heredero, mostrando los balances antes/después.
 
 Hay una segunda demo dedicada al escenario de falsa alarma:
@@ -261,7 +305,7 @@ revierte con `ClaimsAlreadyStarted()`.
 
 ```bash
 cp .env.example .env
-# completar SEPOLIA_RPC_URL, PRIVATE_KEY, HEIR_1 y HEIR_2 en .env (ver "Desplegar y verificar en Sepolia")
+# completar SEPOLIA_RPC_URL, PRIVATE_KEY, ETHERSCAN_API_KEY, HEIR_1 y HEIR_2 en .env (ver "Desplegar y verificar en Sepolia")
 npm run deploy -- --network sepolia
 ```
 
@@ -281,9 +325,16 @@ Despliegue actual en Sepolia: [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](htt
   funciones administrativas. `triggerInheritance()` es intencionalmente pública —
   cualquiera puede vigilar el contrato y dispararla, lo cual evita depender
   de un oráculo o de que el titular haga algo.
+- **`InheritanceWatcher` sin privilegios**: no custodia fondos, no tiene owner
+  y no guarda estado. Que cualquiera pueda llamar `performUpkeep()` no abre
+  ningún camino nuevo: solo llama a `triggerInheritance()`, que ya era
+  pública y revalida plazo y estado. Su evento se emite antes de la llamada
+  externa; si la llamada revierte, el evento se revierte con ella.
 - **Errores custom**: además del ahorro de gas, dan información estructurada
   (ej. `TooEarly(secondsRemaining)`, `InsufficientBalance(requested, available)`).
-- **Solidity ^0.8.20**: overflow/underflow revierten por defecto.
+- **Solidity ^0.8.20**: overflow/underflow revierten por defecto. Fuera de los
+  loops, el único `unchecked` es la resta de `withdraw()`, justo después de
+  comprobar que `amount` no supera el saldo.
 - **Snapshot de balance** (`inheritedBalance`): el reparto se calcula sobre
   una foto fija tomada en `triggerInheritance()`, así el orden en que
   reclaman los herederos no afecta el monto que le toca a cada uno.
@@ -329,7 +380,7 @@ así que el titular tiene el mismo incentivo de siempre para reaccionar rápido.
 
 - **¿Puede alguien hacerse pasar por el titular?** No. El titular no es un
   dato que se configura — es criptográficamente quien firmó la transacción
-  de deploy (`Ownable(msg.sender)`). Conocer la dirección pública de
+  de deploy (`owner = msg.sender` en el constructor). Conocer la dirección pública de
   alguien no alcanza para actuar en su nombre; hace falta su clave privada,
   y ahí el problema deja de ser este contrato.
 - **¿Puede alguien ponerme como heredero sin mi permiso?** Sí, y no hace
@@ -392,6 +443,12 @@ contrato sin nadie que pueda hacer `heartbeat()` nunca más.
   por defecto en cada incremento es gasto innecesario ahí.
 - `claimsCount` en vez de loopear `_heirs` en `sweepDust()` (ver
   [Decisiones de diseño](#decisiones-de-diseño)).
+- Lecturas de storage en variables locales: `withdraw()` lee `depositBalance`
+  una sola vez y hace la resta en `unchecked`, porque el chequeo previo ya
+  descarta el underflow. Pasó de 40.116 a 39.934 de gas (−182).
+  `triggerInheritance()` emite el snapshot desde una variable local en vez de
+  releer `inheritedBalance`; ahí el optimizador ya evitaba la segunda
+  lectura, así que el cambio es de legibilidad y el gas queda igual (+2).
 
 ## Decisiones de diseño
 
@@ -420,7 +477,8 @@ Este checklist es el mismo en ambos repos.
 **Hecho**
 - [x] Contrato `DigitalInheritance` con CEI, `ReentrancyGuard`, eventos y errores custom.
 - [x] NatSpec completo en `/contracts`.
-- [x] 71 tests unitarios en verde (incluye reentrancia).
+- [x] 83 tests unitarios en verde (incluye reentrancia e integración con el watcher).
+- [x] `InheritanceWatcher` compatible con Chainlink Automation (interacción entre contratos).
 - [x] Scripts `demo`, `demo:cancel` y `deploy` (este último con herederos y plazo por variables de entorno).
 - [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
 
@@ -430,6 +488,9 @@ Este checklist es el mismo en ambos repos.
 - [x] Verificar el contrato en Etherscan (requiere `ETHERSCAN_API_KEY`).
 - [x] Anotar la dirección desplegada en este README.
 - [x] Reemplazar en el Roadmap la app Android por el frontend web en React.
+- [ ] Redesplegar `DigitalInheritance` + `InheritanceWatcher` con el código final y verificar ambos.
+- [ ] Registrar el upkeep del watcher en Chainlink Automation.
+- [ ] Ejecutar el flujo completo en Sepolia y anotar los hashes en este README.
 
 **Frontend (`front-herencia-digital`)**
 - [ ] Probar el flujo completo con MetaMask contra `npx hardhat node`.
@@ -451,6 +512,7 @@ Este checklist es el mismo en ambos repos.
 - [x] Documentación técnica.
 - [x] Frontend web mínimo (React + ethers) en repo aparte.
 - [x] Despliegue y verificación en Sepolia.
+- [x] `InheritanceWatcher` compatible con Chainlink Automation, para activar la herencia sola al vencer el plazo.
 
 ### Fase 2 — Próximas funciones
 - Soporte para **ERC-20 y ERC-721** además de ETH nativo (depósito y reclamo
@@ -488,11 +550,11 @@ por defecto:
   herencia, el titular carga el contrato con fondos para cubrir ese gas
   futuro. La garantía de "llega solo" queda pagada por quien más le
   conviene que se cumpla, no regalada a un desconocido.
-- El mismo Chainlink Automation prefinanciado puede encargarse también de
-  llamar `triggerInheritance()` apenas se cumple el plazo, sin esperar a
-  que un tercero lo note manualmente — incluida esa función activa la
-  automatización, `forceDeliverUnclaimed()` es el paso siguiente para el
-  reparto en sí.
+- La primera mitad ya está en el MVP: `InheritanceWatcher` deja que
+  Chainlink Automation llame `triggerInheritance()` apenas se cumple el
+  plazo, sin esperar a que un tercero lo note. `forceDeliverUnclaimed()`
+  sería el paso siguiente, para el reparto en sí. También queda para esta
+  fase un watcher único para varias herencias (hoy es uno por herencia).
 
 **Frontend web (React + Vite + ethers v6).**
 Reemplaza la idea original de una app móvil nativa para Android: una web
