@@ -3,7 +3,7 @@ const { ethers } = hre;
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 // Demo de interacción end-to-end del flujo principal:
-// deploy -> deposit -> heartbeat -> (inactividad) -> trigger -> claim
+// deploy -> deposit -> heartbeat -> (inactividad) -> trigger vía InheritanceWatcher -> claim
 // Pensado para correr sobre la red local de Hardhat:
 //   npx hardhat run scripts/demo.js
 const INACTIVITY_PERIOD_SECONDS = 60 * 60 * 24 * 30; // 30 días, acortado para la demo
@@ -21,7 +21,8 @@ async function logState(contract, label) {
 }
 
 async function main() {
-  const [owner, heir1, heir2, watcher] = await ethers.getSigners();
+  // `keeper` hace de Chainlink Automation: en Sepolia el upkeep lo ejecuta su red de nodos
+  const [owner, heir1, heir2, keeper] = await ethers.getSigners();
 
   console.log("=== 1. DEPLOY ===");
   console.log("Titular:", owner.address);
@@ -36,6 +37,11 @@ async function main() {
   );
   await contract.waitForDeployment();
   console.log("Contrato desplegado en:", await contract.getAddress());
+
+  const Watcher = await ethers.getContractFactory("InheritanceWatcher");
+  const watcher = await Watcher.deploy(await contract.getAddress());
+  await watcher.waitForDeployment();
+  console.log("InheritanceWatcher desplegado en:", await watcher.getAddress());
 
   console.log("\n=== 2. DEPOSIT ===");
   const depositAmount = ethers.parseEther("10");
@@ -54,9 +60,11 @@ async function main() {
   console.log(`Avanzando el reloj de la red ${INACTIVITY_PERIOD_SECONDS + 1} segundos...`);
   await time.increase(INACTIVITY_PERIOD_SECONDS + 1);
   console.log("¿Es triggereable ahora?", await contract.isTriggerable());
+  const [upkeepNeeded] = await watcher.checkUpkeep("0x");
+  console.log("checkUpkeep() del watcher (lo que consulta Chainlink Automation):", upkeepNeeded);
 
-  console.log("\n=== 5. TRIGGER (lo dispara un tercero que vigila el contrato) ===");
-  tx = await contract.connect(watcher).triggerInheritance();
+  console.log("\n=== 5. TRIGGER (InheritanceWatcher.performUpkeep, como lo haría Chainlink Automation) ===");
+  tx = await watcher.connect(keeper).performUpkeep("0x");
   await tx.wait();
   await logState(contract, "después del trigger");
   console.log("Balance congelado para el reparto (inheritedBalance):", eth(await contract.inheritedBalance()));
