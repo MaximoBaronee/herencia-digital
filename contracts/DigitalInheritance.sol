@@ -8,6 +8,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 ///         si el titular no confirma actividad (heartbeat) dentro de un plazo configurable.
 /// @dev Patrón Checks-Effects-Interactions + ReentrancyGuard en toda función que
 ///      mueve valor. Structs y variables ordenadas para empaquetar storage y ahorrar gas.
+///      Roles:
+///      - Titular (`owner`): deposita, retira, hace heartbeat, configura herederos y
+///        plazo, cancela un trigger mientras nadie cobró y recupera el remanente.
+///      - Herederos: cobran su porcentaje una vez activada la herencia.
+///      - Cualquier cuenta o contrato (por ejemplo `InheritanceWatcher`, ejecutado por
+///        Chainlink Automation): activa la herencia cuando venció el plazo.
 contract DigitalInheritance is ReentrancyGuard {
     // ---------------------------------------------------------------------
     // Tipos
@@ -39,11 +45,20 @@ contract DigitalInheritance is ReentrancyGuard {
     ///      (`transferOwnership`, `renounceOwnership`) del contrato deployado.
     address public immutable owner;
 
+    /// @notice Estado del ciclo de vida: ACTIVE mientras corre el plazo, TRIGGERED
+    ///         una vez activada la herencia
     /// @dev `status` + `lastHeartbeat` + `inactivityPeriod` empaquetan en un único
     ///      slot (1 + 5 + 5 = 11 bytes de 32) porque se declaran consecutivos y
     ///      cada uno entra en un tipo más chico que uint256.
     Status public status;
+
+    /// @notice Timestamp (segundos Unix) de la última prueba de vida del titular:
+    ///         el deploy, `heartbeat()` o `cancelTrigger()`
+    /// @dev `uint40` alcanza para timestamps hasta el año ~36.800
     uint40 public lastHeartbeat;
+
+    /// @notice Segundos de inactividad tolerados desde `lastHeartbeat` antes de que
+    ///         cualquiera pueda activar la herencia
     uint40 public inactivityPeriod;
 
     /// @notice ETH depositado y aún no reclamado, según la contabilidad interna
@@ -54,9 +69,18 @@ contract DigitalInheritance is ReentrancyGuard {
     ///         orden de los claims afecte el monto de los que reclaman después)
     uint256 public inheritedBalance;
 
+    /// @dev Herederos en el orden en que se cargaron. Solo se recorre en `_setHeirs()`
+    ///      (para limpiar el set anterior) y se expone completo con `getHeirs()`.
     Heir[] private _heirs;
+
+    /// @dev Porcentaje de cada heredero, para leerlo en O(1) en `claim()` sin recorrer `_heirs`
     mapping(address => uint8) private _percentageOf;
+
+    /// @dev Pertenencia al set actual de herederos: detecta duplicados en `_setHeirs()`
+    ///      y valida quién puede llamar a `claim()`
     mapping(address => bool) private _isHeir;
+
+    /// @notice `true` si esa dirección ya cobró su porción de la herencia
     mapping(address => bool) public claimed;
 
     /// @notice Cantidad de herederos que ya reclamaron desde el último trigger.
@@ -64,6 +88,7 @@ contract DigitalInheritance is ReentrancyGuard {
     ///      (b) reemplazar el loop de `sweepDust()` por una comparación O(1).
     uint256 public claimsCount;
 
+    /// @dev Base de los porcentajes: la suma de los herederos debe dar exactamente este valor
     uint8 private constant TOTAL_PERCENTAGE = 100;
 
     // ---------------------------------------------------------------------
@@ -202,6 +227,8 @@ contract DigitalInheritance is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice Permite al titular depositar ETH en el contrato
+    /// @dev Solo el titular. Se acepta en cualquier estado: lo que se deposita después
+    ///      del trigger no entra en `inheritedBalance` y solo sale por `sweepDust()`.
     function deposit() external payable onlyOwner {
         _deposit();
     }
@@ -224,6 +251,8 @@ contract DigitalInheritance is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice El titular confirma que sigue activo y reinicia el temporizador de inactividad
+    /// @dev Solo el titular y solo en ACTIVE. Con la herencia ya activada, la prueba
+    ///      de vida es `cancelTrigger()`.
     function heartbeat() external onlyOwner whenActive {
         lastHeartbeat = uint40(block.timestamp);
         emit Heartbeat(msg.sender, block.timestamp);
@@ -234,7 +263,7 @@ contract DigitalInheritance is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice Reemplaza la lista de herederos y sus porcentajes
-    /// @dev Solo puede llamarse mientras el contrato esté ACTIVE
+    /// @dev Solo el titular, y solo mientras el contrato esté ACTIVE
     /// @param heirAddresses Direcciones de los nuevos herederos
     /// @param percentages Porcentaje de cada heredero, en el mismo orden (deben sumar 100)
     function setHeirs(address[] calldata heirAddresses, uint8[] calldata percentages)
@@ -246,6 +275,8 @@ contract DigitalInheritance is ReentrancyGuard {
     }
 
     /// @dev Valida y guarda la lista de herederos: sin duplicados, sin dirección cero y con porcentajes que suman 100
+    /// @param heirAddresses Direcciones de los herederos
+    /// @param percentages Porcentaje de cada heredero, en el mismo orden
     function _setHeirs(address[] memory heirAddresses, uint8[] memory percentages) private {
         uint256 len = heirAddresses.length;
         if (len == 0) revert NoHeirs();
@@ -289,6 +320,8 @@ contract DigitalInheritance is ReentrancyGuard {
     }
 
     /// @notice Actualiza el período de inactividad tolerado antes de poder activar la herencia
+    /// @dev Solo el titular, y solo mientras el contrato esté ACTIVE. No tiene cota
+    ///      mínima ni máxima.
     /// @param newPeriod Nuevo período de inactividad, en segundos
     function setInactivityPeriod(uint40 newPeriod) external onlyOwner whenActive {
         inactivityPeriod = newPeriod;
@@ -300,12 +333,19 @@ contract DigitalInheritance is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice El titular retira parcial o totalmente los fondos depositados
+    /// @dev Solo el titular y solo en ACTIVE: una vez activada la herencia, los
+    ///      fondos quedan reservados para los herederos.
     /// @param amount Monto a retirar, en wei
     function withdraw(uint256 amount) external onlyOwner nonReentrant whenActive {
-        if (amount > depositBalance) revert InsufficientBalance(amount, depositBalance);
+        // Una sola lectura de storage, reutilizada en el chequeo y en la resta
+        uint256 available = depositBalance;
+        if (amount > available) revert InsufficientBalance(amount, available);
 
-        // Effects
-        depositBalance -= amount;
+        // Effects. El chequeo anterior garantiza `amount <= available`, así que
+        // la resta no puede hacer underflow y se omite el chequeo de Solidity 0.8.
+        unchecked {
+            depositBalance = available - amount;
+        }
 
         // Interactions
         (bool ok, ) = payable(owner).call{value: amount}("");
@@ -321,8 +361,9 @@ contract DigitalInheritance is ReentrancyGuard {
     /// @notice Activa la herencia si se cumplió el período de inactividad
     /// @dev Se deja permissionless a propósito: cualquiera (típicamente un heredero)
     ///      puede vigilar el contrato y dispararlo, sin depender de un oráculo
-    ///      centralizado ni de que el titular haga algo. En Fase 2 se contempla
-    ///      integrar Chainlink Automation para automatizarlo por completo.
+    ///      centralizado ni de que el titular haga algo. `InheritanceWatcher` lo
+    ///      llama desde Chainlink Automation para que ocurra solo apenas vence el
+    ///      plazo, sin que este contrato dependa de Chainlink.
     function triggerInheritance() external whenActive {
         uint256 deadline = uint256(lastHeartbeat) + uint256(inactivityPeriod);
         if (block.timestamp <= deadline) {
@@ -330,10 +371,12 @@ contract DigitalInheritance is ReentrancyGuard {
         }
         if (_heirs.length == 0) revert NoHeirs();
 
+        // El snapshot se guarda en una variable local para emitirlo sin releer storage
+        uint256 snapshot = depositBalance;
         status = Status.TRIGGERED;
-        inheritedBalance = depositBalance;
+        inheritedBalance = snapshot;
 
-        emit InheritanceTriggered(block.timestamp, msg.sender, inheritedBalance);
+        emit InheritanceTriggered(block.timestamp, msg.sender, snapshot);
     }
 
     /// @notice Permite al titular cancelar una herencia disparada por error
@@ -371,6 +414,8 @@ contract DigitalInheritance is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice Un heredero reclama la porción de ETH que le corresponde
+    /// @dev Solo herederos del set actual, una vez cada uno y solo en TRIGGERED.
+    ///      Monto: `inheritedBalance * porcentaje / 100`.
     function claim() external nonReentrant whenTriggered {
         if (!_isHeir[msg.sender]) revert NotHeir();
         if (claimed[msg.sender]) revert AlreadyClaimed();
@@ -392,6 +437,7 @@ contract DigitalInheritance is ReentrancyGuard {
     /// @notice Una vez que todos los herederos reclamaron, envía al titular el
     ///         remanente que pudo quedar en el contrato por redondeo entero de
     ///         porcentajes (ej. 33/33/34 sobre montos no divisibles exactos)
+    /// @dev Solo el titular, en TRIGGERED y con todos los herederos ya cobrados.
     /// @param to Destino del remanente
     function sweepDust(address payable to) external onlyOwner nonReentrant whenTriggered {
         if (to == address(0)) revert ZeroAddress();
