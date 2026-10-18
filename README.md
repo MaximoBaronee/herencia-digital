@@ -37,6 +37,8 @@ npm run demo         # 3️⃣ opcional: flujo completo en una red local en memo
 | Hice `git pull` y cambió `package.json` | `npm install` |
 | Cambié un archivo de `contracts/` | `npm test` (recompila solo) |
 | Quiero una demo sin gastar ETH | `npm run demo` o `npm run demo:cancel` |
+| Quiero ver la cobertura de tests | `npm run coverage` |
+| Quiero correr el análisis estático | `npm run slither` (requiere Python y `pip install slither-analyzer`) |
 | Quiero contratos nuevos en Sepolia | `npm run deploy -- --network sepolia` (despliega y verifica los dos) y luego actualizar las direcciones en el front |
 | La verificación falló o cargué la API key después | `npm run verify -- --network sepolia` (no redespliega) |
 
@@ -154,11 +156,14 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
 - [Arquitectura](#arquitectura)
 - [Instalación](#instalación)
 - [Cómo correr los tests](#cómo-correr-los-tests)
+- [Cobertura](#cobertura)
+- [Análisis estático (Slither)](#análisis-estático-slither)
 - [Cómo correr la demo](#cómo-correr-la-demo)
 - [Despliegue en testnet (opcional)](#despliegue-en-testnet-opcional)
 - [Seguridad](#seguridad)
 - [Optimización de gas](#optimización-de-gas)
 - [Decisiones de diseño](#decisiones-de-diseño)
+- [Limitaciones conocidas del MVP](#limitaciones-conocidas-del-mvp)
 - [Checklist de entrega](#checklist-de-entrega)
 - [Roadmap](#roadmap)
 
@@ -298,7 +303,43 @@ Las suites (`test/DigitalInheritance.test.js` y `test/InheritanceWatcher.test.js
 - Vistas: `getHeirs`, `percentageOf`, `isHeir`, `isTriggerable` y `timeUntilTrigger`.
 - `InheritanceWatcher`: `checkUpkeep()` en `false` antes del plazo, después de un heartbeat y una vez activada la herencia, y en `true` apenas vence; `performUpkeep()` y `trigger()` activan la herencia con el watcher como `triggeredBy`; se propagan `TooEarly` e `InvalidState`; el titular puede cancelar un trigger hecho por el watcher; y el flujo completo hasta el reclamo de cada heredero.
 
-83 tests, todos en verde. Cobertura de los dos contratos: 100 % de líneas, sentencias y funciones.
+83 tests, todos en verde. Cobertura de los dos contratos: 100 % de líneas, sentencias y funciones (detalle en [Cobertura](#cobertura)).
+
+## Cobertura
+
+```bash
+npm run coverage     # equivale a npx hardhat coverage
+```
+
+Mide los dos contratos del sistema. Los mocks de `contracts/mocks/` son código auxiliar de los tests y quedan fuera de la medición (configurado en `.solcover.js`).
+
+| Contrato | Sentencias | Ramas | Funciones | Líneas |
+|---|---:|---:|---:|---:|
+| `DigitalInheritance` | 100 % | 93.59 % | 100 % | 100 % |
+| `InheritanceWatcher` | 100 % | 100 % | 100 % | 100 % |
+| **Total** | **100 %** | **93.75 %** | **100 %** | **100 %** |
+
+Las 5 ramas sin cubrir no se pueden provocar desde una cuenta normal:
+- **`revert TransferFailed()` en `withdraw()` y `sweepDust()`**: solo ocurre si quien recibe el ETH es un contrato que lo rechaza. En `withdraw()` el que recibe es siempre el titular.
+- **La rama de reentrancia de `nonReentrant` en `withdraw()` y `sweepDust()`**: solo ocurre si quien recibe el ETH vuelve a llamar al contrato. La protección contra reentrancia sí está probada en `claim()`, con `ReentrancyAttacker`.
+- **`revert NoHeirs()` en `triggerInheritance()`**: es una defensa extra. El constructor y `setHeirs()` ya exigen al menos un heredero, así que nunca se llega a ese punto.
+
+## Análisis estático (Slither)
+
+Requiere Python 3 y [Slither](https://github.com/crytic/slither):
+
+```bash
+pip install slither-analyzer
+npm run slither      # equivale a slither . ; la configuración está en slither.config.json
+```
+
+`slither.config.json` deja fuera las dependencias (`node_modules`) y los mocks de test. Sobre `DigitalInheritance` e `InheritanceWatcher`, Slither reporta 7 resultados en 3 detectores. Ninguno es sobre `InheritanceWatcher` y ninguno es de severidad alta. No quedó ningún hallazgo que requiriera corrección.
+
+| Detector | Dónde | Clasificación | Justificación |
+|---|---|---|---|
+| `uninitialized-local` (1) | `_setHeirs()`, variable `sum` | Falso positivo | En Solidity una variable local `uint256` empieza en 0. `sum` es un acumulador y ese valor inicial es el correcto. |
+| `timestamp` (3) | `triggerInheritance()`, `timeUntilTrigger()`, `isTriggerable()` | Aceptado | Un dead man's switch necesita medir tiempo. Un validador solo puede correr `block.timestamp` unos pocos segundos, y el plazo de inactividad se mide en días o meses: ese desvío no cambia el resultado. |
+| `low-level-calls` (3) | `withdraw()`, `claim()`, `sweepDust()` | Aceptado | `call{value: ...}` es la forma recomendada de enviar ETH: `transfer` y `send` tienen un límite fijo de gas que puede fallar con billeteras inteligentes. Se chequea el resultado (`TransferFailed`) y se aplican Checks-Effects-Interactions y `nonReentrant`. |
 
 ## Cómo correr la demo
 
@@ -525,6 +566,27 @@ contrato sin nadie que pueda hacer `heartbeat()` nunca más.
   cobraron" en `sweepDust()` — antes era `for` sobre el array, ahora es una
   comparación directa, más barata en gas.
 
+## Limitaciones conocidas del MVP
+
+Comportamientos actuales que conviene conocer antes de usar el contrato con fondos reales. Los marcados con 🧪 tienen un test que los demuestra en `test/DigitalInheritance.test.js`.
+
+| Limitación | Efecto | Mitigación prevista |
+|---|---|---|
+| Sin ventana de gracia después del trigger 🧪 | Un heredero que sea un contrato puede activar la herencia y cobrar en la misma transacción, sin darle tiempo al titular a cancelar | Período mínimo entre la activación y el primer `claim()` |
+| Heredero que no puede recibir ETH 🧪 | Su `claim()` revierte y `sweepDust()` queda bloqueado para siempre | Retiro pendiente (pull) para esa dirección |
+| `sweepDust()` es solo del titular | Si la herencia fue real, nadie más puede recuperar el remanente | Sweep abierto a cualquiera pasado un plazo |
+| `inactivityPeriod` sin límites 🧪 | Con un plazo de 0, cualquiera puede activar la herencia en el bloque siguiente | Plazo mínimo y máximo |
+| Depósitos después del trigger 🧪 | Lo depositado con la herencia ya activada no entra en el reparto y solo sale por `sweepDust()` | Bloquear `deposit()` fuera de `ACTIVE` |
+| ETH forzado al contrato 🧪 | El ETH que entra sin pasar por `receive()`, por ejemplo con `selfdestruct`, queda atrapado | Recuperar la diferencia entre el balance real y `depositBalance` |
+| Porcentajes enteros | Granularidad del 1 % y restos de pocos wei por redondeo | Basis points (10.000) |
+| Solo ETH | No custodia tokens ERC-20 ni NFTs | Soporte ERC-20 y ERC-721 |
+| Titular fijo, una sola clave | Si el titular pierde su clave, nadie puede hacer heartbeat, y la titularidad no se puede transferir | Recuperación social con guardianes |
+| Activación manual | Chainlink Automation ya no acepta upkeeps nuevos, así que alguien tiene que apretar "Activar herencia" | Conectar el watcher a Chainlink CRE |
+| Un watcher por herencia | Cada herencia necesita desplegar su propio `InheritanceWatcher` | Un watcher para varias herencias |
+| Reparto *pull* | Si un heredero nunca reclama, su parte queda en el contrato | `forceDeliverUnclaimed()` |
+
+Todas las mitigaciones están en la [Fase 2 del roadmap](#fase-2--próximas-funciones).
+
 ## Checklist de entrega
 
 Repos del proyecto:
@@ -539,6 +601,8 @@ Este checklist es el mismo en ambos repos.
 - [x] NatSpec completo en `/contracts`.
 - [x] 83 tests unitarios en verde (incluye reentrancia e integración con el watcher).
 - [x] `InheritanceWatcher`: el front activa la herencia a través de él (interacción entre contratos).
+- [x] Coverage y Slither ejecutados, con resultados y hallazgos justificados en este README.
+- [x] Limitaciones conocidas del MVP documentadas.
 - [x] Scripts `demo`, `demo:cancel` y `deploy` (este último con herederos y plazo por variables de entorno).
 - [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
 
@@ -585,6 +649,11 @@ Este checklist es el mismo en ambos repos.
   hacer heartbeat antes del trigger.
 - Migrar porcentajes a **basis points (10000)** para reparto sin dust y con
   más precisión (ej. 33.33%).
+- **Corregir las [limitaciones conocidas](#limitaciones-conocidas-del-mvp)**
+  del contrato: ventana de gracia entre la activación y el primer reclamo,
+  plazo de inactividad con mínimo y máximo, `deposit()` solo en `ACTIVE`,
+  `sweepDust()` abierto a cualquiera pasado un plazo y recuperación del ETH
+  forzado. Requieren un contrato nuevo, porque el desplegado es inmutable.
 
 **Reparto forzado tras período de gracia (`forceDeliverUnclaimed()`) — feature opcional/premium.**
 Hoy el reparto es 100% *pull*: cada heredero tiene que llamar `claim()` para

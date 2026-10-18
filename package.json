@@ -9,7 +9,9 @@
     "demo": "hardhat run scripts/demo.js",
     "demo:cancel": "hardhat run scripts/demo-cancel.js",
     "deploy": "hardhat run scripts/deploy.js",
-    "verify": "hardhat run scripts/verify.js"
+    "verify": "hardhat run scripts/verify.js",
+    "coverage": "hardhat coverage",
+    "slither": "slither ."
   },
   "keywords": [],
   "author": "",
