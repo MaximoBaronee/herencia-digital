@@ -38,14 +38,13 @@ contract InheritanceWatcher is AutomationCompatibleInterface {
         inheritance = DigitalInheritance(inheritance_);
     }
 
-    /// @notice Activa la herencia vigilada
-    /// @dev Permissionless, igual que `triggerInheritance()`. Si el plazo no venció o la
-    ///      herencia ya estaba activada, el revert de `DigitalInheritance` (`TooEarly` o
-    ///      `InvalidState`) se propaga tal cual. El evento se emite antes de la llamada
-    ///      externa: si la llamada revierte, el evento se revierte con ella.
-    function trigger() public {
-        emit TriggeredViaWatcher(msg.sender, block.timestamp);
-        inheritance.triggerInheritance();
+    // Orden de funciones por visibilidad: external, external view y public.
+
+    /// @notice Lo ejecuta Chainlink Automation cuando `checkUpkeep()` devolvió `true`
+    /// @dev El parámetro `performData` no se usa. No hace falta confiar en quien llama:
+    ///      `triggerInheritance()` vuelve a validar el plazo y revierte si no corresponde.
+    function performUpkeep(bytes calldata) external override {
+        trigger();
     }
 
     /// @notice Lo consulta Chainlink Automation fuera de la cadena para saber si tiene que actuar
@@ -62,10 +61,14 @@ contract InheritanceWatcher is AutomationCompatibleInterface {
         performData = "";
     }
 
-    /// @notice Lo ejecuta Chainlink Automation cuando `checkUpkeep()` devolvió `true`
-    /// @dev El parámetro `performData` no se usa. No hace falta confiar en quien llama:
-    ///      `triggerInheritance()` vuelve a validar el plazo y revierte si no corresponde.
-    function performUpkeep(bytes calldata) external override {
-        trigger();
+    /// @notice Activa la herencia vigilada
+    /// @dev Permissionless, igual que `triggerInheritance()`. Es `public` porque también la
+    ///      usa `performUpkeep()`. Si el plazo no venció o la herencia ya estaba activada,
+    ///      el revert de `DigitalInheritance` (`TooEarly` o `InvalidState`) se propaga tal
+    ///      cual. El evento se emite antes de la llamada externa: si la llamada revierte,
+    ///      el evento se revierte con ella.
+    function trigger() public {
+        emit TriggeredViaWatcher(msg.sender, block.timestamp);
+        inheritance.triggerInheritance();
     }
 }

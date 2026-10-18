@@ -4,10 +4,12 @@ const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 // Demo del "botón de pánico": el titular está vivo pero se quedó sin señal
 // (viaje largo, por ejemplo) y el temporizador se vence. Un tercero dispara
-// la herencia de buena fe. El titular vuelve a tener señal a tiempo -es decir,
-// ANTES de que algún heredero reclame- y cancela con cancelTrigger().
+// la herencia de buena fe. El titular vuelve a tener señal durante la ventana
+// de impugnación -es decir, ANTES de que algún heredero pueda cobrar- y
+// cancela con cancelTrigger().
 // Corre con: npx hardhat run scripts/demo-cancel.js
 const INACTIVITY_PERIOD_SECONDS = 60 * 60 * 24 * 30; // 30 días, acortado para la demo
+const CLAIM_DELAY_SECONDS = 60 * 60 * 24 * 7; // 7 días de ventana de impugnación
 
 function eth(value) {
   return `${ethers.formatEther(value)} ETH`;
@@ -20,6 +22,7 @@ async function main() {
   const Factory = await ethers.getContractFactory("DigitalInheritance");
   const contract = await Factory.deploy(
     INACTIVITY_PERIOD_SECONDS,
+    CLAIM_DELAY_SECONDS,
     [heir1.address, heir2.address],
     [60, 40]
   );
@@ -36,8 +39,14 @@ async function main() {
   await (await contract.connect(watcher).triggerInheritance()).wait();
   console.log("status:", (await contract.status()) === 1n ? "TRIGGERED" : "ACTIVE");
   console.log("¿Todavía se puede cancelar? (canCancelTrigger):", await contract.canCancelTrigger());
+  try {
+    await contract.connect(heir1).claim.staticCall();
+  } catch (err) {
+    console.log("  -> los herederos todavía no pueden cobrar (ventana de impugnación):", err.shortMessage || err.message);
+  }
 
-  console.log("\n=== 4. EL TITULAR RECUPERA SEÑAL A TIEMPO (nadie reclamó todavía) ===");
+  console.log("\n=== 4. EL TITULAR RECUPERA SEÑAL DURANTE LA VENTANA ===");
+  await time.increase(CLAIM_DELAY_SECONDS / 2);
   console.log("Intentando heartbeat() normal primero (para mostrar que está bloqueado)...");
   try {
     await contract.connect(owner).heartbeat();
@@ -50,7 +59,7 @@ async function main() {
   console.log("status:", (await contract.status()) === 0n ? "ACTIVE" : "TRIGGERED");
   console.log("La herencia quedó cancelada. El titular sigue siendo dueño de:", eth(await contract.contractBalance()));
 
-  console.log("\n=== 5. LA VIDA SIGUE: heartbeat y withdraw vuelven a funcionar ===");
+  console.log("\n=== 5. LA VIDA SIGUE: heartbeat vuelve a funcionar ===");
   await (await contract.connect(owner).heartbeat()).wait();
   console.log("Heartbeat normal OK. Segundos hasta el próximo posible trigger:",
     (await contract.timeUntilTrigger()).toString());
@@ -58,15 +67,17 @@ async function main() {
   console.log("\n--- Bonus: qué pasa si el titular llega TARDE (un heredero ya cobró) ---");
   await time.increase(INACTIVITY_PERIOD_SECONDS + 1);
   await (await contract.connect(watcher).triggerInheritance()).wait();
+  await time.increase(CLAIM_DELAY_SECONDS);
   await (await contract.connect(heir1).claim()).wait();
-  console.log("Heredero 1 ya reclamó su parte.");
+  console.log("Se cerró la ventana y el Heredero 1 ya cobró su parte.");
   try {
     await contract.connect(owner).cancelTrigger();
   } catch (err) {
     console.log("  -> cancelTrigger() ahora revierte (punto de no retorno):", err.shortMessage || err.message);
   }
 
-  console.log("\nDemo completa: cancelTrigger() protege al titular vivo, pero deja de ser posible ni bien alguien cobró.");
+  console.log("\nDemo completa: la ventana de impugnación le da tiempo al titular vivo para cancelar,");
+  console.log("y el primer cobro sigue siendo el punto de no retorno.");
 }
 
 main().catch((error) => {

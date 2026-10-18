@@ -3,10 +3,12 @@ const { ethers } = hre;
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 // Demo de interacción end-to-end del flujo principal:
-// deploy -> deposit -> heartbeat -> (inactividad) -> trigger vía InheritanceWatcher -> claim
+// deploy -> deposit -> heartbeat -> (inactividad) -> trigger vía InheritanceWatcher
+//        -> (ventana de impugnación) -> claim
 // Pensado para correr sobre la red local de Hardhat:
 //   npx hardhat run scripts/demo.js
 const INACTIVITY_PERIOD_SECONDS = 60 * 60 * 24 * 30; // 30 días, acortado para la demo
+const CLAIM_DELAY_SECONDS = 60 * 60 * 24 * 7; // 7 días de ventana de impugnación
 
 function eth(value) {
   return `${ethers.formatEther(value)} ETH`;
@@ -32,6 +34,7 @@ async function main() {
   const Factory = await ethers.getContractFactory("DigitalInheritance");
   const contract = await Factory.deploy(
     INACTIVITY_PERIOD_SECONDS,
+    CLAIM_DELAY_SECONDS,
     [heir1.address, heir2.address],
     [60, 40]
   );
@@ -69,7 +72,16 @@ async function main() {
   await logState(contract, "después del trigger");
   console.log("Balance congelado para el reparto (inheritedBalance):", eth(await contract.inheritedBalance()));
 
-  console.log("\n=== 6. CLAIM ===");
+  console.log("\n=== 6. VENTANA DE IMPUGNACIÓN ===");
+  try {
+    await contract.connect(heir1).claim.staticCall();
+  } catch (err) {
+    console.log("  -> un cobro inmediato revierte como se espera:", err.shortMessage || err.message);
+  }
+  console.log(`Durante ${CLAIM_DELAY_SECONDS} segundos el titular todavía puede cancelar. Avanzando el reloj...`);
+  await time.increase(CLAIM_DELAY_SECONDS);
+
+  console.log("\n=== 7. CLAIM ===");
   const before1 = await ethers.provider.getBalance(heir1.address);
   tx = await contract.connect(heir1).claim();
   await tx.wait();

@@ -8,6 +8,8 @@ const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 const ONE_DAY = 24 * 60 * 60;
 const ONE_YEAR = 365 * ONE_DAY;
+// Ventana de impugnación: tiempo entre la activación y el primer cobro
+const CLAIM_DELAY = ONE_DAY;
 
 describe("InheritanceWatcher", function () {
   async function deployFixture() {
@@ -18,6 +20,7 @@ describe("InheritanceWatcher", function () {
     const Inheritance = await ethers.getContractFactory("DigitalInheritance");
     const inheritance = await Inheritance.connect(owner).deploy(
       ONE_YEAR,
+      CLAIM_DELAY,
       [heir1.address, heir2.address],
       [60, 40]
     );
@@ -158,12 +161,19 @@ describe("InheritanceWatcher", function () {
       expect(upkeepNeeded).to.equal(true);
       await watcher.performUpkeep(performData);
 
+      // los herederos cobran recién cuando se cierra la ventana de impugnación
+      await expect(inheritance.connect(heir1).claim()).to.be.revertedWithCustomError(
+        inheritance,
+        "ClaimsNotOpenYet"
+      );
+      await time.increase(CLAIM_DELAY);
+
       await expect(inheritance.connect(heir1).claim())
         .to.emit(inheritance, "Claimed")
-        .withArgs(heir1.address, ethers.parseEther("6"), anyValue);
+        .withArgs(heir1.address, heir1.address, ethers.parseEther("6"), anyValue);
       await expect(inheritance.connect(heir2).claim())
         .to.emit(inheritance, "Claimed")
-        .withArgs(heir2.address, ethers.parseEther("4"), anyValue);
+        .withArgs(heir2.address, heir2.address, ethers.parseEther("4"), anyValue);
 
       expect(await inheritance.contractBalance()).to.equal(0);
     });

@@ -4,7 +4,13 @@ const { saveDeployment, verifyDeployment, explorerUrl } = require("./lib/deploym
 // Parámetros de ejemplo para el deploy. En un caso real, el titular definiría
 // sus propios herederos, porcentajes y período de inactividad (en segundos).
 const INACTIVITY_PERIOD_SECONDS = Number(process.env.INACTIVITY_PERIOD_SECONDS) || 60 * 60 * 24 * 365; // 1 año
+// Ventana de impugnación entre la activación y el primer cobro
+const CLAIM_DELAY_SECONDS = Number(process.env.CLAIM_DELAY_SECONDS) || 60 * 60 * 24 * 7; // 7 días
 const HEIR_PERCENTAGES = (process.env.HEIR_PERCENTAGES || "60,40").split(",").map((p) => Number(p.trim()));
+
+// Mínimos del contrato (MIN_INACTIVITY_PERIOD y MIN_CLAIM_DELAY)
+const MIN_INACTIVITY_PERIOD = 5 * 60;
+const MIN_CLAIM_DELAY = 60;
 
 // Bloques a esperar en una red pública antes de verificar, para que Etherscan
 // ya tenga indexado el bytecode de los contratos recién desplegados.
@@ -13,7 +19,7 @@ const CONFIRMATIONS = 5;
 // Replica en el script las mismas validaciones que hace el constructor del
 // contrato, para fallar con un mensaje claro antes de gastar gas en un deploy
 // que igual revertiría.
-function validateParams(heirAddresses, percentages, inactivityPeriod) {
+function validateParams(heirAddresses, percentages, inactivityPeriod, claimDelay) {
   const errors = [];
 
   if (heirAddresses.length === 0) errors.push("Hace falta al menos un heredero (HEIR_1).");
@@ -31,15 +37,18 @@ function validateParams(heirAddresses, percentages, inactivityPeriod) {
     errors.push("Hay direcciones de herederos repetidas.");
   }
 
-  if (percentages.some((p) => !Number.isInteger(p) || p < 0 || p > 100)) {
-    errors.push(`HEIR_PERCENTAGES debe contener enteros entre 0 y 100: ${percentages.join(",")}`);
+  if (percentages.some((p) => !Number.isInteger(p) || p < 1 || p > 100)) {
+    errors.push(`HEIR_PERCENTAGES debe contener enteros entre 1 y 100: ${percentages.join(",")}`);
   } else {
     const sum = percentages.reduce((acc, p) => acc + p, 0);
     if (sum !== 100) errors.push(`Los porcentajes deben sumar 100 (suman ${sum}).`);
   }
 
-  if (!Number.isInteger(inactivityPeriod) || inactivityPeriod <= 0) {
-    errors.push(`INACTIVITY_PERIOD_SECONDS debe ser un entero positivo: ${inactivityPeriod}`);
+  if (!Number.isInteger(inactivityPeriod) || inactivityPeriod < MIN_INACTIVITY_PERIOD) {
+    errors.push(`INACTIVITY_PERIOD_SECONDS debe ser un entero de al menos ${MIN_INACTIVITY_PERIOD}: ${inactivityPeriod}`);
+  }
+  if (!Number.isInteger(claimDelay) || claimDelay < MIN_CLAIM_DELAY) {
+    errors.push(`CLAIM_DELAY_SECONDS debe ser un entero de al menos ${MIN_CLAIM_DELAY}: ${claimDelay}`);
   }
 
   if (errors.length > 0) {
@@ -110,7 +119,7 @@ async function main() {
   ];
   const percentages = HEIR_PERCENTAGES;
 
-  validateParams(heirAddresses, percentages, INACTIVITY_PERIOD_SECONDS);
+  validateParams(heirAddresses, percentages, INACTIVITY_PERIOD_SECONDS, CLAIM_DELAY_SECONDS);
 
   const balance = await hre.ethers.provider.getBalance(deployer.address);
 
@@ -120,6 +129,7 @@ async function main() {
   console.log("Saldo del titular:", hre.ethers.formatEther(balance), "ETH");
   console.log("Herederos:", heirAddresses, "Porcentajes:", percentages);
   console.log("Período de inactividad (seg):", INACTIVITY_PERIOD_SECONDS);
+  console.log("Ventana de impugnación (seg):", CLAIM_DELAY_SECONDS);
   console.log();
 
   if (balance === 0n) {
@@ -134,6 +144,7 @@ async function main() {
 
   const inheritance = await deployContract("DigitalInheritance", [
     INACTIVITY_PERIOD_SECONDS,
+    CLAIM_DELAY_SECONDS,
     heirAddresses,
     percentages,
   ]);
