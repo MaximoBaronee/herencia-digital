@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from "./errorMessages";
 import { BrowserProvider, Contract, type Eip1193Provider } from "ethers";
 import abi from "../abi/DigitalInheritance.json";
 
@@ -110,10 +111,18 @@ export function decodeError(error: unknown): string {
   const e = error as {
     reason?: string;
     shortMessage?: string;
-    revert?: { name?: string };
+    revert?: { name?: string; args?: unknown[] };
     message?: string;
     error?: { message?: string };
     info?: { error?: { message?: string } };
   };
-  return e.revert?.name ?? e.reason ?? e.info?.error?.message ?? e.error?.message ?? e.shortMessage ?? e.message ?? "Error desconocido";
+  const name = e.revert?.name;
+  const firstArg = e.revert?.args?.[0];
+  if (name && ERROR_MESSAGES[name]) {
+    if (name === "TooEarly" && typeof firstArg === "bigint") {
+      return `${ERROR_MESSAGES[name]} Faltan ${formatDuration(Number(firstArg))}.`;
+    }
+    return ERROR_MESSAGES[name];
+  }
+  return name ?? e.reason ?? e.info?.error?.message ?? e.error?.message ?? e.shortMessage ?? e.message ?? "Error desconocido";
 }
