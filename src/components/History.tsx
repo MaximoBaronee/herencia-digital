@@ -21,6 +21,8 @@ function describe(entry: HistoryEntry, nameOf: (address: string) => string) {
       return "Herederos configurados";
     case "period":
       return `Plazo de inactividad cambiado a ${formatDuration(entry.period ?? 0)}`;
+    case "delay":
+      return `Ventana de impugnación cambiada a ${formatDuration(entry.period ?? 0)}`;
     case "triggered":
       return entry.viaWatcher
         ? `${entry.watcherCaller ? nameOf(entry.watcherCaller) : "Alguien"} activó la herencia a través de InheritanceWatcher: ${eth} congelados para los herederos`
@@ -28,7 +30,7 @@ function describe(entry: HistoryEntry, nameOf: (address: string) => string) {
     case "cancelled":
       return `${who} canceló la activación`;
     case "claimed":
-      return `${who} cobró ${eth}`;
+      return entry.to ? `${who} cobró ${eth} en ${nameOf(entry.to)}` : `${who} cobró ${eth}`;
     case "withdrawn":
       return `${who} retiró ${eth}`;
     case "dust":

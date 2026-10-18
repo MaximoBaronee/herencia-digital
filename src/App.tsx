@@ -164,7 +164,18 @@ export default function App() {
     [contract],
   );
 
-  const secondsLeft = snapshot ? Math.max(0, snapshot.secondsLeft - Math.floor((now - readAt) / 1000)) : 0;
+  // Los contadores avanzan en vivo desde la última lectura, y los botones se habilitan
+  // solos cuando llegan a 0, sin esperar a recargar el estado
+  const elapsed = Math.floor((now - readAt) / 1000);
+  const secondsLeft = snapshot ? Math.max(0, snapshot.secondsLeft - elapsed) : 0;
+  const claimsSecondsLeft = snapshot ? Math.max(0, snapshot.claimsSecondsLeft - elapsed) : 0;
+  const live: Snapshot | null = snapshot && {
+    ...snapshot,
+    secondsLeft,
+    claimsSecondsLeft,
+    triggerable: !snapshot.triggered && secondsLeft === 0,
+    claimsOpen: snapshot.triggered && claimsSecondsLeft === 0,
+  };
 
   return (
     <main className="app">
@@ -193,29 +204,45 @@ export default function App() {
       )}
       {message && <div className={`banner banner--${message.kind}`}>{message.text}</div>}
 
-      {snapshot && (
+      {live && (
         <>
           <div className="grid">
             <Stat
               title="Estado"
-              value={snapshot.triggered ? "TRIGGERED" : "ACTIVE"}
+              value={live.triggered ? "TRIGGERED" : "ACTIVE"}
               hint={`Contrato ${shortAddress(CONTRACT_ADDRESS)}`}
             />
             <Stat
               title="Balance"
-              value={`${formatEther(snapshot.contractBalance)} ETH`}
-              hint={snapshot.triggered ? `Congelado: ${formatEther(snapshot.inheritedBalance)} ETH` : undefined}
+              value={`${formatEther(live.contractBalance)} ETH`}
+              hint={live.triggered ? `Congelado: ${formatEther(live.inheritedBalance)} ETH` : undefined}
             />
-            <Stat
-              title={snapshot.triggered ? "Reclamos" : "Tiempo para activar"}
-              value={snapshot.triggered ? `${snapshot.claimsCount}/${snapshot.heirs.length}` : formatDuration(secondsLeft)}
-              hint={`Plazo: ${formatDuration(snapshot.inactivityPeriod)}`}
-            />
+            {!live.triggered && (
+              <Stat
+                title="Tiempo para activar"
+                value={formatDuration(secondsLeft)}
+                hint={`Plazo: ${formatDuration(live.inactivityPeriod)} · Ventana: ${formatDuration(live.claimDelay)}`}
+              />
+            )}
+            {live.triggered && !live.claimsOpen && (
+              <Stat
+                title="Cobros habilitados en"
+                value={formatDuration(claimsSecondsLeft)}
+                hint="Ventana de impugnación: el titular todavía puede cancelar"
+              />
+            )}
+            {live.claimsOpen && (
+              <Stat
+                title="Reclamos"
+                value={`${live.claimsCount}/${live.heirs.length}`}
+                hint="Ventana de impugnación cerrada"
+              />
+            )}
           </div>
           <Card title="Herederos">
-            <HeirList heirs={snapshot.heirs} me={account} />
+            <HeirList heirs={live.heirs} me={account} />
           </Card>
-          <Actions snapshot={snapshot} busy={busy} run={run} call={call} />
+          <Actions snapshot={live} busy={busy} run={run} call={call} />
           <Card title="Historial">
             <History entries={history} error={historyError} nameOf={nameOf} />
           </Card>

@@ -7,6 +7,11 @@
         "type": "uint40"
       },
       {
+        "internalType": "uint40",
+        "name": "initialClaimDelay",
+        "type": "uint40"
+      },
+      {
         "internalType": "address[]",
         "name": "heirAddresses",
         "type": "address[]"
@@ -33,6 +38,17 @@
   {
     "inputs": [],
     "name": "ClaimsAlreadyStarted",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "secondsRemaining",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimsNotOpenYet",
     "type": "error"
   },
   {
@@ -101,17 +117,28 @@
   },
   {
     "inputs": [],
-    "name": "NotAllHeirsClaimed",
-    "type": "error"
-  },
-  {
-    "inputs": [],
     "name": "NotHeir",
     "type": "error"
   },
   {
     "inputs": [],
     "name": "NotOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "provided",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minimum",
+        "type": "uint256"
+      }
+    ],
+    "name": "PeriodTooShort",
     "type": "error"
   },
   {
@@ -141,12 +168,48 @@
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "heir",
+        "type": "address"
+      }
+    ],
+    "name": "ZeroPercentage",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint40",
+        "name": "newDelay",
+        "type": "uint40"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimDelayUpdated",
+    "type": "event"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
         "indexed": true,
         "internalType": "address",
         "name": "heir",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
         "type": "address"
       },
       {
@@ -349,6 +412,32 @@
   },
   {
     "inputs": [],
+    "name": "MIN_CLAIM_DELAY",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_INACTIVITY_PERIOD",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "canCancelTrigger",
     "outputs": [
       {
@@ -375,10 +464,36 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "claimDelay",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address payable",
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "claimTo",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
-        "name": "",
+        "name": "account",
         "type": "address"
       }
     ],
@@ -396,6 +511,19 @@
   {
     "inputs": [],
     "name": "claimsCount",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "claimsOpenAt",
     "outputs": [
       {
         "internalType": "uint256",
@@ -424,19 +552,6 @@
     "name": "deposit",
     "outputs": [],
     "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "depositBalance",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -470,7 +585,7 @@
           }
         ],
         "internalType": "struct DigitalInheritance.Heir[]",
-        "name": "",
+        "name": "heirs",
         "type": "tuple[]"
       }
     ],
@@ -590,6 +705,19 @@
   {
     "inputs": [
       {
+        "internalType": "uint40",
+        "name": "newDelay",
+        "type": "uint40"
+      }
+    ],
+    "name": "setClaimDelay",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address[]",
         "name": "heirAddresses",
         "type": "address[]"
@@ -646,6 +774,19 @@
   },
   {
     "inputs": [],
+    "name": "sweepableBalance",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "timeUntilTrigger",
     "outputs": [
       {
@@ -662,6 +803,19 @@
     "name": "triggerInheritance",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "triggeredAt",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {

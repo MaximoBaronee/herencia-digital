@@ -1,4 +1,4 @@
-import { ERROR_MESSAGES } from "./errorMessages";
+import { ERROR_MESSAGES, ERRORS_WITH_SECONDS } from "./errorMessages";
 import { BrowserProvider, Contract, EventLog, type Eip1193Provider } from "ethers";
 import abi from "../abi/DigitalInheritance.json";
 
@@ -39,6 +39,7 @@ export type HistoryKind =
   | "heartbeat"
   | "heirs"
   | "period"
+  | "delay"
   | "triggered"
   | "cancelled"
   | "claimed"
@@ -51,8 +52,10 @@ export interface HistoryEntry {
   kind: HistoryKind;
   /** Dirección que hizo la acción (o destino, en el caso del remanente) */
   actor?: string;
+  /** Dirección que recibió el ETH de un cobro, si no es el propio heredero */
+  to?: string;
   amount?: bigint;
-  /** Nuevo plazo en segundos, solo para "period" */
+  /** Nuevo plazo en segundos, solo para "period" y "delay" */
   period?: number;
   /** true si la herencia se activó a través de InheritanceWatcher */
   viaWatcher: boolean;
@@ -106,6 +109,9 @@ export async function readHistory(contract: Contract): Promise<HistoryEntry[]> {
       case "InactivityPeriodUpdated":
         entries.push({ ...base, kind: "period", period: Number(args.newPeriod) });
         break;
+      case "ClaimDelayUpdated":
+        entries.push({ ...base, kind: "delay", period: Number(args.newDelay) });
+        break;
       case "InheritanceTriggered": {
         const viaWatcher = !!WATCHER_ADDRESS && args.triggeredBy.toLowerCase() === WATCHER_ADDRESS.toLowerCase();
         entries.push({
@@ -122,7 +128,13 @@ export async function readHistory(contract: Contract): Promise<HistoryEntry[]> {
         entries.push({ ...base, kind: "cancelled", actor: args.owner });
         break;
       case "Claimed":
-        entries.push({ ...base, kind: "claimed", actor: args.heir, amount: args.amount });
+        entries.push({
+          ...base,
+          kind: "claimed",
+          actor: args.heir,
+          to: args.to.toLowerCase() === args.heir.toLowerCase() ? undefined : args.to,
+          amount: args.amount,
+        });
         break;
       case "Withdrawn":
         entries.push({ ...base, kind: "withdrawn", actor: args.owner, amount: args.amount });
@@ -145,14 +157,20 @@ export interface Heir {
 export interface Snapshot {
   owner: string;
   triggered: boolean;
+  /** Segundos hasta que se pueda activar la herencia, al momento de la lectura */
   secondsLeft: number;
   inactivityPeriod: number;
-  depositBalance: bigint;
+  /** Ventana de impugnación configurada, en segundos */
+  claimDelay: number;
+  /** Segundos hasta que se cierre la ventana de impugnación (0 si ya se puede cobrar o no está activada) */
+  claimsSecondsLeft: number;
   contractBalance: bigint;
   inheritedBalance: bigint;
   claimsCount: number;
   heirs: Heir[];
   triggerable: boolean;
+  /** true si la herencia está activada y la ventana de impugnación ya se cerró */
+  claimsOpen: boolean;
   cancellable: boolean;
   role: Role;
   myPercentage: number;
@@ -197,13 +215,14 @@ export async function restoreWallet() {
 }
 
 export async function readSnapshot(contract: Contract, account: string): Promise<Snapshot> {
-  const [owner, status, secondsLeft, inactivityPeriod, depositBalance, contractBalance, inheritedBalance, claimsCount, heirs, triggerable, cancellable, myPercentage, myClaimed] =
+  const [owner, status, secondsLeft, inactivityPeriod, claimDelay, claimsOpenAt, contractBalance, inheritedBalance, claimsCount, heirs, triggerable, cancellable, myPercentage, myClaimed, latestBlock] =
     await Promise.all([
       contract.owner(),
       contract.status(),
       contract.timeUntilTrigger(),
       contract.inactivityPeriod(),
-      contract.depositBalance(),
+      contract.claimDelay(),
+      contract.claimsOpenAt(),
       contract.contractBalance(),
       contract.inheritedBalance(),
       contract.claimsCount(),
@@ -212,17 +231,24 @@ export async function readSnapshot(contract: Contract, account: string): Promise
       contract.canCancelTrigger(),
       contract.percentageOf(account),
       contract.claimed(account),
+      contract.runner?.provider?.getBlock("latest"),
     ]);
 
   const role: Role =
     owner.toLowerCase() === account.toLowerCase() ? "owner" : Number(myPercentage) > 0 ? "heir" : "observer";
 
+  const triggered = Number(status) === 1;
+  // La ventana se mide contra el reloj de la cadena, no el de la compu
+  const chainNow = latestBlock ? latestBlock.timestamp : Math.floor(Date.now() / 1000);
+  const claimsSecondsLeft = triggered ? Math.max(0, Number(claimsOpenAt) - chainNow) : 0;
+
   return {
     owner,
-    triggered: Number(status) === 1,
+    triggered,
     secondsLeft: Number(secondsLeft),
     inactivityPeriod: Number(inactivityPeriod),
-    depositBalance,
+    claimDelay: Number(claimDelay),
+    claimsSecondsLeft,
     contractBalance,
     inheritedBalance,
     claimsCount: Number(claimsCount),
@@ -231,6 +257,7 @@ export async function readSnapshot(contract: Contract, account: string): Promise
       percentage: Number(h.percentage),
     })),
     triggerable,
+    claimsOpen: triggered && claimsSecondsLeft === 0,
     cancellable,
     role,
     myPercentage: Number(myPercentage),
@@ -263,7 +290,7 @@ export function decodeError(error: unknown): string {
   const name = e.revert?.name;
   const firstArg = e.revert?.args?.[0];
   if (name && ERROR_MESSAGES[name]) {
-    if (name === "TooEarly" && typeof firstArg === "bigint") {
+    if (ERRORS_WITH_SECONDS.has(name) && typeof firstArg === "bigint") {
       return `${ERROR_MESSAGES[name]} Faltan ${formatDuration(Number(firstArg))}.`;
     }
     return ERROR_MESSAGES[name];

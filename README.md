@@ -7,8 +7,10 @@ Repo del backend (contratos): https://github.com/MaximoBaronee/herencia-digital
 ## 🚀 Puesta en marcha
 
 > 💡 **Esto es lo único que se "enciende".** Los contratos ya viven en Sepolia, así que no necesitas levantar ningún servidor de contratos:
-> - `DigitalInheritance`: [`0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0`](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code)
-> - `InheritanceWatcher`: [`0x68E5FE129B3f51e79bdCfa6eabe7019962b93422`](https://sepolia.etherscan.io/address/0x68E5FE129B3f51e79bdCfa6eabe7019962b93422#code). El botón **Activar herencia** pasa por este contrato, que llama a la herencia (interacción entre contratos).
+> - `DigitalInheritance`: [`0x842e9fA385222a636e5382B35265adad4ef07d66`](https://sepolia.etherscan.io/address/0x842e9fA385222a636e5382B35265adad4ef07d66#code)
+> - `InheritanceWatcher`: [`0x4d46E7989185e60fE3FA2ef9633FA2316fA55eCC`](https://sepolia.etherscan.io/address/0x4d46E7989185e60fE3FA2ef9633FA2316fA55eCC#code). El botón **Activar herencia** pasa por este contrato, que llama a la herencia (interacción entre contratos).
+>
+> Son la **versión 2** de los contratos, con las correcciones de la revisión de seguridad. El detalle está en el [README del back](https://github.com/MaximoBaronee/herencia-digital#revisión-de-seguridad-y-correcciones-versión-2).
 
 ### 🆕 Primera vez (recién clonado)
 
@@ -67,35 +69,40 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
                                   ▼
                        🚨 triggerInheritance()   (cualquiera; el front pasa por InheritanceWatcher)
                                   │
+                                  ▼
+                       ⏳ ventana de impugnación (claimDelay): nadie puede cobrar todavía
+                                  │
                 ┌─────────────────┴──────────────────┐
                 ▼                                    ▼
       ↩️ cancelTrigger()                    🎁 claim() de cada heredero
-   (solo el titular, y solo si                (cada uno cobra su %,
-    nadie cobró todavía)                       una sola vez)
+   (solo el titular, y solo si                (al cerrarse la ventana; cada uno
+    nadie cobró todavía)                       cobra su %, una sola vez)
 ```
 
 | Rol | Quién es | Qué puede hacer |
 |---|---|---|
-| 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `cancelTrigger`, `sweepDust` |
-| 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | `claim()` cuando la herencia está activada |
+| 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `setClaimDelay`, `cancelTrigger`, `sweepDust` |
+| 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | **Reclamar mi parte** cuando la herencia está activada y se cerró la ventana de impugnación |
 | 👀 **Observador** | cualquier otra wallet | **Activar herencia** si el plazo venció, y ver el estado y el historial |
 
 El botón **Activar herencia**, visible para cualquier cuenta, llama a `InheritanceWatcher`, que a su vez llama a `triggerInheritance()` de la herencia: esa es la interacción entre contratos. La tarjeta **Historial** muestra cada movimiento del contrato con su link a Etherscan y marca esa activación como "contrato → contrato".
 
+Después de la activación, el panel muestra la cuenta regresiva de la **ventana de impugnación**. Mientras corre, el botón **Reclamar mi parte** está deshabilitado y el titular todavía puede apretar **Cancelar activación**. Los contadores avanzan en vivo y los botones se habilitan solos al llegar a 0.
+
 ### 🎬 Ejemplo: el caso de Ana
 
-> Ana (titular) deja **1 ETH** para sus hermanos **Bruno (60 %)** y **Carla (40 %)**, con un plazo de **30 días** de inactividad.
+> Ana (titular) deja **1 ETH** para sus hermanos **Bruno (60 %)** y **Carla (40 %)**, con un plazo de **30 días** de inactividad y una ventana de impugnación de **7 días**.
 
 | Día | Qué pasa | Estado |
 |:-:|---|:-:|
 | 0 | Ana despliega el contrato y llama `deposit()` con 1 ETH | 🟢 ACTIVE |
 | 10 | Ana llama `heartbeat()`: el reloj de 30 días **vuelve a empezar** | 🟢 ACTIVE |
 | 40 | Ana no responde: pasaron más de 30 días desde su último heartbeat | 🟡 plazo vencido |
-| 41 | Carla (o cualquiera) llama `triggerInheritance()`: el balance de 1 ETH queda congelado | 🔴 TRIGGERED |
-| 41 | Bruno llama `claim()` y recibe **0.6 ETH** | 🔴 TRIGGERED |
-| 42 | Carla llama `claim()` y recibe **0.4 ETH** | 🔴 TRIGGERED |
+| 41 | Carla (o cualquiera) llama `triggerInheritance()`: el balance de 1 ETH queda congelado y empieza la ventana de impugnación | 🔴 TRIGGERED |
+| 48 | Se cierra la ventana: Bruno llama `claim()` y recibe **0.6 ETH** | 🔴 TRIGGERED |
+| 49 | Carla llama `claim()` y recibe **0.4 ETH** | 🔴 TRIGGERED |
 
-**¿Y si fue una falsa alarma?** Si Ana vuelve entre el día 41 y el momento en que alguien cobra, llama `cancelTrigger()` y todo regresa a 🟢 ACTIVE sin perder fondos. Pero **en cuanto un heredero cobra, ya no hay vuelta atrás**.
+**¿Y si fue una falsa alarma?** Durante la ventana de impugnación, del día 41 al 48, nadie puede cobrar: si Ana vuelve, llama `cancelTrigger()` y todo regresa a 🟢 ACTIVE sin perder fondos. Pero **en cuanto un heredero cobra, ya no hay vuelta atrás**.
 
 ---
 
@@ -124,10 +131,12 @@ Este checklist es el mismo en ambos repos.
 **Contratos (`herencia-digital`)**
 - [x] `DigitalInheritance` con Checks-Effects-Interactions, `ReentrancyGuard`, eventos, errores custom y NatSpec completo.
 - [x] `InheritanceWatcher`: interacción entre contratos; el front activa la herencia a través de él.
-- [x] 83 tests en verde, incluidos reentrancia, contratos atacantes e integración entre los dos contratos.
-- [x] Coverage y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
+- [x] Versión 2 con las correcciones de la revisión de seguridad: ventana de impugnación, `claimTo()`, barrido sin bloqueos y plazos mínimos.
+- [x] 104 tests en verde, incluidos reentrancia, contratos atacantes, integración entre los dos contratos y un test de propiedades con escenarios aleatorios.
+- [x] Coverage del 100 % y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
 - [x] Contratos desplegados y verificados en Sepolia, con direcciones y links al código.
-- [x] Flujo completo ejecutado en Sepolia desde el front, con los hashes en el README del back.
+- [x] Flujo completo ejecutado en Sepolia con la versión 1, con los hashes en el README del back.
+- [ ] Flujo completo con la versión 2, grabado en el video, con sus hashes en el README del back.
 - [x] Scripts `demo`, `demo:cancel`, `deploy` (despliega y verifica) y `verify`.
 - [x] Limitaciones conocidas del MVP y roadmap documentados.
 
@@ -136,7 +145,7 @@ Este checklist es el mismo en ambos repos.
 - [x] **Activar herencia** a través de `InheritanceWatcher`.
 - [x] Historial de movimientos con links a Etherscan.
 - [x] Mensajes legibles para los errores del contrato y sesión de la wallet restaurada al recargar.
-- [x] Configurado para Sepolia: `.env.example` trae los contratos actuales.
+- [x] Adaptado a la versión 2: cuenta regresiva de la ventana de impugnación y `.env.example` con los contratos actuales.
 - [ ] Opcional: aplicar el sistema de diseño con el CSS mínimo necesario.
 - [ ] Opcional: publicar el front, por ejemplo en Vercel.
 
@@ -157,7 +166,8 @@ Este checklist es el mismo en ambos repos.
 | 2 | 🔗 [Sepolia PoW Faucet (pk910)](https://sepolia-faucet.pk910.de) | ⛏️ Minado en el navegador y reclamo de **1.064 ETH** adicionales para las pruebas ([tx](https://sepolia.etherscan.io/tx/0xc38936ae7e26d2bbb2de790f9fd96b72517d7752f36c681a00517bcee3ce2397)) | [Figura 2](#figura-2) |
 | 3 | 🔗 [MetaMask](https://metamask.io) | 🦊 Importación de la cuenta de despliegue, red Sepolia y firma de todas las transacciones del front | Figuras 3 a 5 |
 | 4 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) | 🚀 Primer despliegue y verificación de `DigitalInheritance`, en `0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9` ([código verificado](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code)) ([tx](https://sepolia.etherscan.io/tx/0x796b1f076a8e2e2faf9a8e7ca0fbfd7a0b5f250c1b9f2315f935b4869be3dce3)). Es la **versión anterior** y ya no se usa: los contratos actuales están al principio de este README | — |
-| 5 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code) | 🚀 Despliegue y verificación de los contratos actuales, `DigitalInheritance` e `InheritanceWatcher`, y flujo completo desde el front ([evidencia](https://github.com/MaximoBaronee/herencia-digital#evidencia-on-chain-del-flujo-principal)) | — |
+| 5 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code) | 🚀 Versión 1 de `DigitalInheritance` e `InheritanceWatcher`, con el flujo completo ejecutado desde el front ([evidencia](https://github.com/MaximoBaronee/herencia-digital#evidencia-on-chain-del-flujo-principal)). Ya no se usa | — |
+| 6 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0x842e9fA385222a636e5382B35265adad4ef07d66#code) | 🚀 Versión 2, la actual: despliegue y verificación de los dos contratos con las correcciones de la revisión de seguridad | — |
 
 <a id="figura-1"></a>
 

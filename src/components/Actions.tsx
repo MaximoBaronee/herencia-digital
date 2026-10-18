@@ -2,7 +2,7 @@ import { useState } from "react";
 import { parseEther } from "ethers";
 import { Button } from "./Button";
 import { Card } from "./Card";
-import type { Snapshot } from "../lib/inheritance";
+import { formatDuration, type Snapshot } from "../lib/inheritance";
 
 interface ActionsProps {
   snapshot: Snapshot;
@@ -21,7 +21,8 @@ interface ActionsProps {
 export function Actions({ snapshot, busy, run, call }: ActionsProps) {
   const [amount, setAmount] = useState("0.01");
   const isOwner = snapshot.role === "owner";
-  const canClaim = snapshot.role === "heir" && snapshot.triggered && !snapshot.myClaimed;
+  const canClaim = snapshot.role === "heir" && snapshot.claimsOpen && !snapshot.myClaimed;
+  const windowOpen = snapshot.triggered && !snapshot.claimsOpen;
 
   return (
     <Card title="Acciones">
@@ -63,6 +64,12 @@ export function Actions({ snapshot, busy, run, call }: ActionsProps) {
         <Button variant="primary" disabled={busy || !canClaim} onClick={() => run("Reclamo", () => call.claim())}>
           {snapshot.myClaimed ? "Ya reclamaste" : "Reclamar mi parte"}
         </Button>
+      )}
+      {windowOpen && (
+        <span className="muted">
+          Ventana de impugnación: los herederos podrán cobrar en {formatDuration(snapshot.claimsSecondsLeft)}.
+          {isOwner ? " Mientras tanto, si la activación fue un error, puedes cancelarla." : ""}
+        </span>
       )}
       {snapshot.role === "observer" && snapshot.triggered && (
         <span className="muted">Tu wallet no es titular ni heredera de este contrato.</span>
