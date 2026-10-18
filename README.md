@@ -15,23 +15,16 @@ Repo del backend (contratos): https://github.com/MaximoBaronee/herencia-digital
 ```bash
 git clone https://github.com/johanriascos7777/front-herencia-digital.git
 cd front-herencia-digital
-cp .env.example .env.local     # 1️⃣ configuración (ver tabla)
+cp .env.example .env.local     # 1️⃣ configuración: ya trae los contratos de Sepolia, no hay que editar nada
 npm install                    # 2️⃣ requiere Node.js 18+
 npm run dev                    # 3️⃣ abre http://localhost:5173
 ```
 
-Contenido de `.env.local` para Sepolia:
+`.env.example` ya trae los valores del despliegue actual en Sepolia. Son todos públicos: direcciones de contratos, red y un RPC público. No hay ninguna clave privada, así que no es un riesgo que estén en el repo.
 
-```
-VITE_CONTRACT_ADDRESS=0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0
-VITE_WATCHER_ADDRESS=0x68E5FE129B3f51e79bdCfa6eabe7019962b93422
-VITE_CHAIN_ID=11155111
-VITE_CHAIN_NAME=Sepolia
-VITE_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
-VITE_DEPLOY_BLOCK=11941804
-```
-
-`VITE_WATCHER_ADDRESS` es obligatoria para el botón **Activar herencia**. `VITE_DEPLOY_BLOCK` es el bloque del deploy: desde ahí se lee la tarjeta **Historial**, que lista cada movimiento del contrato con su link a Etherscan.
+- `VITE_WATCHER_ADDRESS` es obligatoria para el botón **Activar herencia**.
+- `VITE_DEPLOY_BLOCK` es el bloque del deploy: desde ahí se lee la tarjeta **Historial**, que lista cada movimiento del contrato con su link a Etherscan.
+- Para probar contra la red local de Hardhat (`npx hardhat node` en el back), cambiar a `VITE_CHAIN_ID=31337`, `VITE_CHAIN_NAME=Hardhat Local`, `VITE_RPC_URL=http://127.0.0.1:8545`, dejar `VITE_DEPLOY_BLOCK` vacío y usar las direcciones que imprime `npm run deploy -- --network localhost`.
 
 | Pregunta | Respuesta |
 |---|---|
