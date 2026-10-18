@@ -2,7 +2,10 @@
 
 Frontend mínimo (React + Vite + ethers v6) para el contrato `DigitalInheritance`.
 
-Repo del backend (contratos): https://github.com/MaximoBaronee/herencia-digital
+- 🎬 **Video de presentación y demo:** https://go.screenpal.com/watch/cO6F3knyb0S
+- ⛓️ **Repo del backend (contratos):** https://github.com/MaximoBaronee/herencia-digital
+- 🌐 **Front publicado:** _pendiente_
+- 📄 **Whitepaper:** _pendiente_
 
 ## 🚀 Puesta en marcha
 
@@ -125,7 +128,8 @@ Repos del proyecto:
 Este checklist es el mismo en ambos repos.
 
 **Entregables**
-- **Video de presentación y demo:** _pendiente_
+- **Video de presentación y demo:** https://go.screenpal.com/watch/cO6F3knyb0S
+- **Front publicado:** _pendiente_
 - **Whitepaper:** _pendiente_
 
 **Contratos (`herencia-digital`)**
@@ -136,7 +140,7 @@ Este checklist es el mismo en ambos repos.
 - [x] Coverage del 100 % y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
 - [x] Contratos desplegados y verificados en Sepolia, con direcciones y links al código.
 - [x] Flujo completo ejecutado en Sepolia con la versión 1, con los hashes en el README del back.
-- [ ] Flujo completo con la versión 2, grabado en el video, con sus hashes en el README del back.
+- [x] Flujo completo con la versión 2, grabado en el video, con sus hashes en el README del back.
 - [x] Scripts `demo`, `demo:cancel`, `deploy` (despliega y verifica) y `verify`.
 - [x] Limitaciones conocidas del MVP y roadmap documentados.
 
@@ -151,10 +155,11 @@ Este checklist es el mismo en ambos repos.
 
 **Entrega**
 - [x] Repos públicos, con commits de los tres integrantes desde su propia cuenta.
-- [ ] Grabar el video, de 5 minutos como máximo, siguiendo el [guion](https://github.com/johanriascos7777/front-herencia-digital/blob/main/guion/guion-por-tomas.md).
+- [x] Grabar el video, de 5 minutos como máximo, siguiendo el [guion](https://github.com/johanriascos7777/front-herencia-digital/blob/main/guion/guion-por-tomas.md).
 - [ ] Escribir el whitepaper.
 - [ ] Subir el video y el whitepaper a la carpeta de Drive de la comisión, con el apellido de quien registró al equipo en el nombre de cada archivo.
-- [ ] Agregar los links del video y del whitepaper en los dos READMEs.
+- [x] Agregar el link del video en los dos READMEs.
+- [ ] Agregar el link del whitepaper y el del front publicado en los dos READMEs.
 
 ---
 
@@ -167,7 +172,7 @@ Este checklist es el mismo en ambos repos.
 | 3 | 🔗 [MetaMask](https://metamask.io) | 🦊 Importación de la cuenta de despliegue, red Sepolia y firma de todas las transacciones del front | Figuras 3 a 5 |
 | 4 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) | 🚀 Primer despliegue y verificación de `DigitalInheritance`, en `0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9` ([código verificado](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code)) ([tx](https://sepolia.etherscan.io/tx/0x796b1f076a8e2e2faf9a8e7ca0fbfd7a0b5f250c1b9f2315f935b4869be3dce3)). Es la **versión anterior** y ya no se usa: los contratos actuales están al principio de este README | — |
 | 5 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code) | 🚀 Versión 1 de `DigitalInheritance` e `InheritanceWatcher`, con el flujo completo ejecutado desde el front ([evidencia](https://github.com/MaximoBaronee/herencia-digital#evidencia-on-chain-del-flujo-principal)). Ya no se usa | — |
-| 6 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0x842e9fA385222a636e5382B35265adad4ef07d66#code) | 🚀 Versión 2, la actual: despliegue y verificación de los dos contratos con las correcciones de la revisión de seguridad | — |
+| 6 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0x842e9fA385222a636e5382B35265adad4ef07d66#code) | 🚀 Versión 2, la actual: despliegue y verificación de los dos contratos con las correcciones de la revisión de seguridad, y el flujo completo grabado en el [video](https://go.screenpal.com/watch/cO6F3knyb0S) ([evidencia](https://github.com/MaximoBaronee/herencia-digital#evidencia-on-chain-del-flujo-principal)) | — |
 
 <a id="figura-1"></a>
 
