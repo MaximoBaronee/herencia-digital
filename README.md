@@ -596,36 +596,35 @@ Repos del proyecto:
 
 Este checklist es el mismo en ambos repos.
 
-**Hecho**
-- [x] Contrato `DigitalInheritance` con CEI, `ReentrancyGuard`, eventos y errores custom.
-- [x] NatSpec completo en `/contracts`.
-- [x] 83 tests unitarios en verde (incluye reentrancia e integración con el watcher).
-- [x] `InheritanceWatcher`: el front activa la herencia a través de él (interacción entre contratos).
-- [x] Coverage y Slither ejecutados, con resultados y hallazgos justificados en este README.
-- [x] Limitaciones conocidas del MVP documentadas.
-- [x] Scripts `demo`, `demo:cancel` y `deploy` (este último con herederos y plazo por variables de entorno).
-- [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
+**Entregables**
+- **Video de presentación y demo:** _pendiente_
+- **Whitepaper:** _pendiente_
 
-**Backend (`herencia-digital`)**
-- [x] Fondear con Sepolia ETH la wallet de despliegue.
-- [x] Desplegar en Sepolia con `npm run deploy -- --network sepolia`.
-- [x] Verificar el contrato en Etherscan (requiere `ETHERSCAN_API_KEY`).
-- [x] Anotar la dirección desplegada en este README.
-- [x] Reemplazar en el Roadmap la app Android por el frontend web en React.
-- [x] Redesplegar `DigitalInheritance` + `InheritanceWatcher` con el código final y verificar ambos.
-- [x] Subir al front el cambio de "Activar herencia" a través del watcher (`VITE_WATCHER_ADDRESS`).
-- [x] Ejecutar el flujo completo en Sepolia y anotar los hashes en este README.
+**Contratos (`herencia-digital`)**
+- [x] `DigitalInheritance` con Checks-Effects-Interactions, `ReentrancyGuard`, eventos, errores custom y NatSpec completo.
+- [x] `InheritanceWatcher`: interacción entre contratos; el front activa la herencia a través de él.
+- [x] 83 tests en verde, incluidos reentrancia, contratos atacantes e integración entre los dos contratos.
+- [x] Coverage y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
+- [x] Contratos desplegados y verificados en Sepolia, con direcciones y links al código.
+- [x] Flujo completo ejecutado en Sepolia desde el front, con los hashes en el README del back.
+- [x] Scripts `demo`, `demo:cancel`, `deploy` (despliega y verifica) y `verify`.
+- [x] Limitaciones conocidas del MVP y roadmap documentados.
 
 **Frontend (`front-herencia-digital`)**
-- [ ] Probar el flujo completo con MetaMask contra `npx hardhat node`.
-- [ ] Crear el sistema de diseño en Claude (Sistema de diseño → New design system → Using Claude Code) apuntando a este repo.
-- [ ] Aplicar el diseño con el CSS mínimo necesario.
-- [x] Configurar Sepolia (`VITE_CHAIN_ID`, `VITE_CHAIN_NAME`, `VITE_CONTRACT_ADDRESS`, `VITE_WATCHER_ADDRESS`) y probar contra los contratos desplegados.
+- [x] Conexión de wallet, detección de rol, dashboard y acciones.
+- [x] **Activar herencia** a través de `InheritanceWatcher`.
+- [x] Historial de movimientos con links a Etherscan.
+- [x] Mensajes legibles para los errores del contrato y sesión de la wallet restaurada al recargar.
+- [x] Configurado para Sepolia: `.env.example` trae los contratos actuales.
+- [ ] Opcional: aplicar el sistema de diseño con el CSS mínimo necesario.
+- [ ] Opcional: publicar el front, por ejemplo en Vercel.
 
 **Entrega**
-- [ ] Grabar el video de presentación y demo (máximo 5 minutos, incluyendo el frontend).
-- [ ] Verificar que ambos READMEs expliquen cómo ejecutar y el Roadmap.
-- [ ] Subir los cambios a ambos repos.
+- [x] Repos públicos, con commits de los tres integrantes desde su propia cuenta.
+- [ ] Grabar el video, de 5 minutos como máximo, siguiendo el [guion](https://github.com/johanriascos7777/front-herencia-digital/blob/main/guion/guion-por-tomas.md).
+- [ ] Escribir el whitepaper.
+- [ ] Subir el video y el whitepaper a la carpeta de Drive de la comisión, con el apellido de quien registró al equipo en el nombre de cada archivo.
+- [ ] Agregar los links del video y del whitepaper en los dos READMEs.
 
 ## Roadmap
 
