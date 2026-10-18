@@ -38,18 +38,41 @@ function explorerUrl(network, address) {
   return base ? `${base}/address/${address}#code` : null;
 }
 
-// Verifica en Etherscan cada contrato del despliegue. Si uno falla, sigue con el
-// resto y deja el proceso con código de error para que el fallo no pase inadvertido.
-// Un contrato ya verificado no es un error: hardhat-verify lo informa y sigue.
-async function verifyDeployment(hre, deployment) {
-  for (const [name, info] of Object.entries(deployment.contracts)) {
-    console.log(`\nVerificando ${name} (${info.address})...`);
+// Etherscan a veces tarda más que las confirmaciones en indexar el bytecode de un
+// contrato recién desplegado y responde "does not have bytecode". En ese caso se
+// reintenta unas veces antes de rendirse.
+const VERIFY_ATTEMPTS = 6;
+const VERIFY_RETRY_DELAY_MS = 20_000;
+
+async function verifyContract(hre, name, info, retryDelayMs) {
+  for (let attempt = 1; ; attempt++) {
     try {
       await hre.run("verify:verify", {
         address: info.address,
         contract: info.contract,
         constructorArguments: info.constructorArguments,
       });
+      return;
+    } catch (error) {
+      const notIndexedYet = /does not have bytecode/i.test(error.message);
+      if (!notIndexedYet || attempt === VERIFY_ATTEMPTS) throw error;
+      console.log(
+        `Etherscan todavía no indexó ${name}. Reintento ${attempt + 1}/${VERIFY_ATTEMPTS} ` +
+          `en ${retryDelayMs / 1000} s...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+}
+
+// Verifica en Etherscan cada contrato del despliegue. Si uno falla, sigue con el
+// resto y deja el proceso con código de error para que el fallo no pase inadvertido.
+// Un contrato ya verificado no es un error: hardhat-verify lo informa y sigue.
+async function verifyDeployment(hre, deployment, { retryDelayMs = VERIFY_RETRY_DELAY_MS } = {}) {
+  for (const [name, info] of Object.entries(deployment.contracts)) {
+    console.log(`\nVerificando ${name} (${info.address})...`);
+    try {
+      await verifyContract(hre, name, info, retryDelayMs);
     } catch (error) {
       console.error(`No se pudo verificar ${name}: ${error.message}`);
       process.exitCode = 1;

@@ -72,7 +72,7 @@ function printNextSteps(network, inheritanceAddress, watcherAddress) {
   console.log("\n=== Próximos pasos ===");
   const inheritanceUrl = explorerUrl(network, inheritanceAddress);
   if (inheritanceUrl) {
-    console.log("Código verificado:");
+    console.log("Código en Etherscan (verificado si arriba no hubo errores):");
     console.log("  DigitalInheritance:", inheritanceUrl);
     console.log("  InheritanceWatcher:", explorerUrl(network, watcherAddress));
     console.log(`Chainlink Automation: registrar un upkeep "Custom logic" con target ${watcherAddress}`);
