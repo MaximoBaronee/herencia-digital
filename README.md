@@ -6,6 +6,11 @@ Contrato inteligente que custodia ETH y lo distribuye automáticamente entre
 herederos designados si el titular deja de confirmar actividad (heartbeat)
 durante un período configurable.
 
+- 🎬 **Video de presentación y demo:** https://go.screenpal.com/watch/cO6F3knyb0S
+- 🖥️ **Repo del frontend:** https://github.com/johanriascos7777/front-herencia-digital
+- 🌐 **Front publicado:** _pendiente_
+- 📄 **Whitepaper:** _pendiente_
+
 ## 🚀 Puesta en marcha
 
 > 💡 **El "back" no se enciende.** Los contratos ya viven en la blockchain de Sepolia y funcionan 24/7 sin que tengas nada corriendo. Este repo lo usas para **compilar, probar y desplegar**.
@@ -406,7 +411,19 @@ Parámetros: titular `0xBDdB6C4FC08Af549d13A33455374e7fFBfD7fA70`, herederos `0x
 
 ### Evidencia on-chain del flujo principal
 
-**Versión 2, la actual:** _pendiente_. El flujo completo se ejecuta al grabar el video, y sus transacciones se agregan acá.
+**Versión 2, la actual:** ejecutado el 18/10/2026 desde el front con MetaMask, y grabado en el [video](https://go.screenpal.com/watch/cO6F3knyb0S). Cada link abre la transacción en Etherscan.
+
+| # | Acción | Quién | Transacción |
+|:-:|---|---|---|
+| 1 | Deploy de `DigitalInheritance` | Titular | [`0x2cd19a98…`](https://sepolia.etherscan.io/tx/0x2cd19a9802ee90fb726d0b05e844beb87d6125e47dbce4ef7905b132f397d660) |
+| 2 | Deploy de `InheritanceWatcher` | Titular | [`0x75f847fb…`](https://sepolia.etherscan.io/tx/0x75f847fbd248178d240fd42fa8abc6f57821ab30cd5785d1259da3cad3cc1fec) |
+| 3 | `deposit()` de 1 ETH | Titular | [`0x4fa92beb…`](https://sepolia.etherscan.io/tx/0x4fa92beb276082582eb1f0c6810e903bd050086cadb761890d7dea3f380e7207) |
+| 4 | `heartbeat()` | Titular | [`0xb75af430…`](https://sepolia.etherscan.io/tx/0xb75af4300c5d38833bcb525bc59c1ef25ec3fa29fecd0e1ed534c90675b1e307) |
+| 5 | **`trigger()` del watcher → `triggerInheritance()`** (interacción entre contratos), 20 min después del heartbeat | Heredero 1 | [`0x818dcbde…`](https://sepolia.etherscan.io/tx/0x818dcbde6c66f80203b358b7d2f4c12c921d88fa94be83de85d0e53548fc91e7#eventlog) |
+| 6 | `claim()`: cobra 0.6 ETH, 7 min después de la activación | Heredero 1 | [`0xe437938f…`](https://sepolia.etherscan.io/tx/0xe437938f3d30f366c31a3abef9fdbdfb03ef13fe028fa7110ef7a4d666b893d6) |
+| 7 | `claim()`: cobra 0.4 ETH | Heredero 2 | [`0xb2580989…`](https://sepolia.etherscan.io/tx/0xb2580989feb66de2e4e3a929277bc072eba6dd24f9a7401222e3df8cc6a57778) |
+
+En la transacción 5, la pestaña **Logs** muestra `TriggeredViaWatcher`, emitido por el watcher, e `InheritanceTriggered`, emitido por la herencia con el watcher como `triggeredBy`. Las transacciones 4 y 6 pasaron por el contrato de delegación de MetaMask (EIP-7702), por eso su campo *To* muestra `0xdb9B…7dB3`; sus eventos muestran la llamada real al contrato. Estado final: la herencia quedó activada, `inheritedBalance` en 1 ETH, `claimsCount` en 2 y saldo 0.
 
 **Versión 1:** ejecutado el 18/10/2026 sobre los contratos `0xe45D…a6a0` y `0x68E5…3422`, antes de las correcciones de la [revisión de seguridad](#revisión-de-seguridad-y-correcciones-versión-2). Los deploys se hicieron con `npm run deploy`, y el resto desde el front con MetaMask. Cada link abre la transacción en Etherscan.
 
@@ -676,7 +693,8 @@ Repos del proyecto:
 Este checklist es el mismo en ambos repos.
 
 **Entregables**
-- **Video de presentación y demo:** _pendiente_
+- **Video de presentación y demo:** https://go.screenpal.com/watch/cO6F3knyb0S
+- **Front publicado:** _pendiente_
 - **Whitepaper:** _pendiente_
 
 **Contratos (`herencia-digital`)**
@@ -687,7 +705,7 @@ Este checklist es el mismo en ambos repos.
 - [x] Coverage del 100 % y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
 - [x] Contratos desplegados y verificados en Sepolia, con direcciones y links al código.
 - [x] Flujo completo ejecutado en Sepolia con la versión 1, con los hashes en el README del back.
-- [ ] Flujo completo con la versión 2, grabado en el video, con sus hashes en el README del back.
+- [x] Flujo completo con la versión 2, grabado en el video, con sus hashes en el README del back.
 - [x] Scripts `demo`, `demo:cancel`, `deploy` (despliega y verifica) y `verify`.
 - [x] Limitaciones conocidas del MVP y roadmap documentados.
 
@@ -702,10 +720,11 @@ Este checklist es el mismo en ambos repos.
 
 **Entrega**
 - [x] Repos públicos, con commits de los tres integrantes desde su propia cuenta.
-- [ ] Grabar el video, de 5 minutos como máximo, siguiendo el [guion](https://github.com/johanriascos7777/front-herencia-digital/blob/main/guion/guion-por-tomas.md).
+- [x] Grabar el video, de 5 minutos como máximo, siguiendo el [guion](https://github.com/johanriascos7777/front-herencia-digital/blob/main/guion/guion-por-tomas.md).
 - [ ] Escribir el whitepaper.
 - [ ] Subir el video y el whitepaper a la carpeta de Drive de la comisión, con el apellido de quien registró al equipo en el nombre de cada archivo.
-- [ ] Agregar los links del video y del whitepaper en los dos READMEs.
+- [x] Agregar el link del video en los dos READMEs.
+- [ ] Agregar el link del whitepaper y el del front publicado en los dos READMEs.
 
 ## Roadmap
 
