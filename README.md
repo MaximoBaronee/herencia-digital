@@ -8,8 +8,9 @@ durante un período configurable.
 
 ## 🚀 Puesta en marcha
 
-> 💡 **El "back" no se enciende.** El contrato ya vive en la blockchain de Sepolia y funciona 24/7 sin que tengas nada corriendo:
-> [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code). Este repo lo usas para **compilar, probar y desplegar**.
+> 💡 **El "back" no se enciende.** Los contratos ya viven en la blockchain de Sepolia y funcionan 24/7 sin que tengas nada corriendo. Este repo lo usas para **compilar, probar y desplegar**.
+> - `DigitalInheritance`: [`0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0`](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code)
+> - `InheritanceWatcher`: [`0x68E5FE129B3f51e79bdCfa6eabe7019962b93422`](https://sepolia.etherscan.io/address/0x68E5FE129B3f51e79bdCfa6eabe7019962b93422#code)
 
 ### 🆕 Primera vez (recién clonado)
 
@@ -337,7 +338,38 @@ cp .env.example .env
 npm run deploy -- --network sepolia
 ```
 
-Despliegue actual en Sepolia: [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) (titular `0xB4c296D61f50CEdF5b68082A9cd7012eCb1Eb697`, 2 herederos 60/40, plazo de inactividad de 600 s). Código verificado en [Etherscan](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code).
+### Despliegue actual
+
+Red: **Ethereum Sepolia** (chain id `11155111`). Los datos completos del despliegue están en [`deployments/sepolia.json`](deployments/sepolia.json).
+
+| Contrato | Dirección | Código verificado |
+|---|---|---|
+| `DigitalInheritance` | `0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0` | [Etherscan](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code) |
+| `InheritanceWatcher` | `0x68E5FE129B3f51e79bdCfa6eabe7019962b93422` | [Etherscan](https://sepolia.etherscan.io/address/0x68E5FE129B3f51e79bdCfa6eabe7019962b93422#code) |
+
+Parámetros: titular `0xBDdB6C4FC08Af549d13A33455374e7fFBfD7fA70`, herederos `0x5EEa…1fEB` (60 %) y `0x5312…1D92` (40 %), plazo de inactividad de 600 s.
+
+### Evidencia on-chain del flujo principal
+
+Ejecutado el 18/10/2026: los deploys con `npm run deploy`, y el resto desde el front con MetaMask. Cada link abre la transacción en Etherscan.
+
+| # | Acción | Quién | Transacción |
+|:-:|---|---|---|
+| 1 | Deploy de `DigitalInheritance` | Titular | [`0x6de462ec…`](https://sepolia.etherscan.io/tx/0x6de462ece6d2aa1e862f444aeca4258399f33d8c60ba6ba83e8af64bdd99147b) |
+| 2 | Deploy de `InheritanceWatcher` | Titular | [`0x5cb6e2b9…`](https://sepolia.etherscan.io/tx/0x5cb6e2b91b0b3c08255e3bce1a11ecf404ff2a9ff9b38f87dbd6c8c49e36ad6d) |
+| 3 | `heartbeat()` | Titular | [`0x4c6c8316…`](https://sepolia.etherscan.io/tx/0x4c6c83167f69b03fc1b4b807b0f72ee249b469b708ce6832cd136b4bacf22091) |
+| 4 | `deposit()` de 1 ETH | Titular | [`0xe3a6564d…`](https://sepolia.etherscan.io/tx/0xe3a6564dda62a923850b525daaec11935c4dbfc6ab2fcb12c736ca64601e600c) |
+| 5 | `triggerInheritance()` directo, tras 10 min sin heartbeat | Titular | [`0x52f7fd6e…`](https://sepolia.etherscan.io/tx/0x52f7fd6ec7e4f454e47e24a257df309b651973b1b65ad2d9c88a58fca7e364b7) |
+| 6 | `cancelTrigger()`: falsa alarma, nadie había cobrado | Titular | [`0x6ae887c9…`](https://sepolia.etherscan.io/tx/0x6ae887c912455c46dd21c670ad6b1a13067dd4c2d01aa0a9b85987120c277222) |
+| 7 | **`trigger()` del watcher → `triggerInheritance()`** (interacción entre contratos) | Titular | [`0x11e2c571…`](https://sepolia.etherscan.io/tx/0x11e2c571b2230bc653f80a78110fd285a10a562ee7d644cbcaed67b81165b883#eventlog) |
+| 8 | `claim()`: cobra 0.6 ETH | Heredero 1 | [`0x0f176682…`](https://sepolia.etherscan.io/tx/0x0f176682ff3a676281794822ab0da76c4a99e3ddf91204912d669907217cdc4c) |
+| 9 | `claim()`: cobra 0.4 ETH | Heredero 2 | [`0xdded9965…`](https://sepolia.etherscan.io/tx/0xdded9965bad87c01ab02afab8421dbd38e39320ef55b36eacff3725c975e0227) |
+
+En la transacción 7, la pestaña **Logs** muestra los dos eventos de la interacción entre contratos: `TriggeredViaWatcher`, emitido por el watcher, e `InheritanceTriggered`, emitido por la herencia con el watcher como `triggeredBy`. Las cuentas de prueba son cuentas inteligentes de MetaMask (EIP-7702), por eso en Etherscan el campo *To* de las transacciones 3 a 9 muestra el contrato de delegación de MetaMask; los eventos de cada transacción muestran la llamada real a los contratos.
+
+Estado final: la herencia quedó activada, los dos herederos cobraron y el contrato quedó con saldo 0.
+
+El despliegue anterior, previo a `InheritanceWatcher`, sigue en [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) y ya no se usa.
 
 ## Seguridad
 
@@ -516,15 +548,15 @@ Este checklist es el mismo en ambos repos.
 - [x] Verificar el contrato en Etherscan (requiere `ETHERSCAN_API_KEY`).
 - [x] Anotar la dirección desplegada en este README.
 - [x] Reemplazar en el Roadmap la app Android por el frontend web en React.
-- [ ] Redesplegar `DigitalInheritance` + `InheritanceWatcher` con el código final y verificar ambos.
-- [ ] Subir al front el cambio de "Activar herencia" a través del watcher (`VITE_WATCHER_ADDRESS`).
-- [ ] Ejecutar el flujo completo en Sepolia y anotar los hashes en este README.
+- [x] Redesplegar `DigitalInheritance` + `InheritanceWatcher` con el código final y verificar ambos.
+- [x] Subir al front el cambio de "Activar herencia" a través del watcher (`VITE_WATCHER_ADDRESS`).
+- [x] Ejecutar el flujo completo en Sepolia y anotar los hashes en este README.
 
 **Frontend (`front-herencia-digital`)**
 - [ ] Probar el flujo completo con MetaMask contra `npx hardhat node`.
 - [ ] Crear el sistema de diseño en Claude (Sistema de diseño → New design system → Using Claude Code) apuntando a este repo.
 - [ ] Aplicar el diseño con el CSS mínimo necesario.
-- [ ] Configurar Sepolia (`VITE_CHAIN_ID`, `VITE_CHAIN_NAME`, `VITE_CONTRACT_ADDRESS`) y probar contra el contrato desplegado.
+- [x] Configurar Sepolia (`VITE_CHAIN_ID`, `VITE_CHAIN_NAME`, `VITE_CONTRACT_ADDRESS`, `VITE_WATCHER_ADDRESS`) y probar contra los contratos desplegados.
 
 **Entrega**
 - [ ] Grabar el video de presentación y demo (máximo 5 minutos, incluyendo el frontend).
