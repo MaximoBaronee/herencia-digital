@@ -65,7 +65,7 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
                                                               │
                                   ┌───────────────────────────┘
                                   ▼
-                       🚨 triggerInheritance()   (la ejecuta cualquiera)
+                       🚨 triggerInheritance()   (cualquiera; el front pasa por InheritanceWatcher)
                                   │
                 ┌─────────────────┴──────────────────┐
                 ▼                                    ▼
@@ -78,7 +78,9 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
 |---|---|---|
 | 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `cancelTrigger`, `sweepDust` |
 | 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | `claim()` cuando la herencia está activada |
-| 👀 **Observador** | cualquier otra wallet | `triggerInheritance()` si el plazo venció, y leer el estado |
+| 👀 **Observador** | cualquier otra wallet | **Activar herencia** si el plazo venció, y ver el estado y el historial |
+
+El botón **Activar herencia**, visible para cualquier cuenta, llama a `InheritanceWatcher`, que a su vez llama a `triggerInheritance()` de la herencia: esa es la interacción entre contratos. La tarjeta **Historial** muestra cada movimiento del contrato con su link a Etherscan y marca esa activación como "contrato → contrato".
 
 ### 🎬 Ejemplo: el caso de Ana
 
@@ -100,9 +102,11 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
 ## Estructura
 
 - `src/styles/tokens.css`: tokens de diseño (colores, espaciado, tipografía).
-- `src/components/`: `Button`, `Card`, `Stat`, `Badge`, `HeirList`, `Actions`.
-- `src/lib/inheritance.ts`: conexión de wallet, lectura del estado y detección de rol.
+- `src/components/`: `Button`, `Card`, `Stat`, `Badge`, `HeirList`, `Actions` y `History` (historial de movimientos).
+- `src/lib/inheritance.ts`: conexión y restauración de la wallet, lectura del estado, detección de rol, activación vía `InheritanceWatcher` y lectura de eventos para el historial.
+- `src/lib/errorMessages.ts`: mensajes legibles para los errores custom del contrato.
 - `src/abi/DigitalInheritance.json`: ABI exportado de `herencia-digital`.
+- `guion/guion-por-tomas.md`: guion del video de presentación y demo.
 
 ## Checklist de entrega
 
@@ -113,30 +117,35 @@ Repos del proyecto:
 
 Este checklist es el mismo en ambos repos.
 
-**Hecho**
-- [x] Contrato `DigitalInheritance` con CEI, `ReentrancyGuard`, eventos y errores custom.
-- [x] NatSpec completo en `/contracts`.
-- [x] 43 tests unitarios en verde (incluye reentrancia).
-- [x] Scripts `demo`, `demo:cancel` y `deploy` (este último con herederos y plazo por variables de entorno).
-- [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
+**Entregables**
+- **Video de presentación y demo:** _pendiente_
+- **Whitepaper:** _pendiente_
 
-**Backend (`herencia-digital`)**
-- [x] Fondear con Sepolia ETH la wallet de despliegue.
-- [x] Desplegar en Sepolia con `npm run deploy -- --network sepolia`.
-- [x] Verificar el contrato en Etherscan (requiere `ETHERSCAN_API_KEY`).
-- [x] Anotar la dirección desplegada en este README.
-- [x] Reemplazar en el Roadmap la app Android por el frontend web en React.
+**Contratos (`herencia-digital`)**
+- [x] `DigitalInheritance` con Checks-Effects-Interactions, `ReentrancyGuard`, eventos, errores custom y NatSpec completo.
+- [x] `InheritanceWatcher`: interacción entre contratos; el front activa la herencia a través de él.
+- [x] 83 tests en verde, incluidos reentrancia, contratos atacantes e integración entre los dos contratos.
+- [x] Coverage y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
+- [x] Contratos desplegados y verificados en Sepolia, con direcciones y links al código.
+- [x] Flujo completo ejecutado en Sepolia desde el front, con los hashes en el README del back.
+- [x] Scripts `demo`, `demo:cancel`, `deploy` (despliega y verifica) y `verify`.
+- [x] Limitaciones conocidas del MVP y roadmap documentados.
 
 **Frontend (`front-herencia-digital`)**
-- [ ] Probar el flujo completo con MetaMask contra `npx hardhat node`.
-- [ ] Crear el sistema de diseño en Claude (Sistema de diseño → New design system → Using Claude Code) apuntando a este repo.
-- [ ] Aplicar el diseño con el CSS mínimo necesario.
-- [ ] Configurar Sepolia (`VITE_CHAIN_ID`, `VITE_CHAIN_NAME`, `VITE_CONTRACT_ADDRESS`) y probar contra el contrato desplegado.
+- [x] Conexión de wallet, detección de rol, dashboard y acciones.
+- [x] **Activar herencia** a través de `InheritanceWatcher`.
+- [x] Historial de movimientos con links a Etherscan.
+- [x] Mensajes legibles para los errores del contrato y sesión de la wallet restaurada al recargar.
+- [x] Configurado para Sepolia: `.env.example` trae los contratos actuales.
+- [ ] Opcional: aplicar el sistema de diseño con el CSS mínimo necesario.
+- [ ] Opcional: publicar el front, por ejemplo en Vercel.
 
 **Entrega**
-- [ ] Grabar el video de presentación y demo (máximo 5 minutos, incluyendo el frontend).
-- [ ] Verificar que ambos READMEs expliquen cómo ejecutar y el Roadmap.
-- [ ] Subir los cambios a ambos repos.
+- [x] Repos públicos, con commits de los tres integrantes desde su propia cuenta.
+- [ ] Grabar el video, de 5 minutos como máximo, siguiendo el [guion](https://github.com/johanriascos7777/front-herencia-digital/blob/main/guion/guion-por-tomas.md).
+- [ ] Escribir el whitepaper.
+- [ ] Subir el video y el whitepaper a la carpeta de Drive de la comisión, con el apellido de quien registró al equipo en el nombre de cada archivo.
+- [ ] Agregar los links del video y del whitepaper en los dos READMEs.
 
 ---
 
@@ -147,7 +156,8 @@ Este checklist es el mismo en ambos repos.
 | 1 | 🔗 [Google Cloud Web3 Faucet](https://cloud.google.com/application/web3/faucet/ethereum/sepolia) | 💸 Recepción de **0.05 ETH** de Sepolia en la wallet de despliegue `0xB4c296D61f50CEdF5b68082A9cd7012eCb1Eb697` ([tx](https://sepolia.etherscan.io/tx/0x01fcfdb8775f8b708b484f9e3be5da1e43bee2a0a55861e771cf11c9a74356dd)) | [Figura 1](#figura-1) |
 | 2 | 🔗 [Sepolia PoW Faucet (pk910)](https://sepolia-faucet.pk910.de) | ⛏️ Minado en el navegador y reclamo de **1.064 ETH** adicionales para las pruebas ([tx](https://sepolia.etherscan.io/tx/0xc38936ae7e26d2bbb2de790f9fd96b72517d7752f36c681a00517bcee3ce2397)) | [Figura 2](#figura-2) |
 | 3 | 🔗 [MetaMask](https://metamask.io) | 🦊 Importación de la cuenta de despliegue, red Sepolia y firma de todas las transacciones del front | Figuras 3 a 5 |
-| 4 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) | 🚀 Despliegue y verificación del código de `DigitalInheritance` en `0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9` ([código verificado](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code)) ([tx](https://sepolia.etherscan.io/tx/0x796b1f076a8e2e2faf9a8e7ca0fbfd7a0b5f250c1b9f2315f935b4869be3dce3)) | — |
+| 4 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) | 🚀 Primer despliegue y verificación de `DigitalInheritance`, en `0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9` ([código verificado](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code)) ([tx](https://sepolia.etherscan.io/tx/0x796b1f076a8e2e2faf9a8e7ca0fbfd7a0b5f250c1b9f2315f935b4869be3dce3)). Es la **versión anterior** y ya no se usa: los contratos actuales están al principio de este README | — |
+| 5 | 🔗 [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code) | 🚀 Despliegue y verificación de los contratos actuales, `DigitalInheritance` e `InheritanceWatcher`, y flujo completo desde el front ([evidencia](https://github.com/MaximoBaronee/herencia-digital#evidencia-on-chain-del-flujo-principal)) | — |
 
 <a id="figura-1"></a>
 
@@ -166,6 +176,8 @@ Este checklist es el mismo en ambos repos.
 </p>
 
 ## ✅ Pruebas realizadas en Sepolia
+
+> ℹ️ Estas primeras pruebas se hicieron con el **contrato anterior**, `0xF7DE…1DCE9`, antes de sumar `InheritanceWatcher`. El flujo completo con los contratos actuales, del depósito a los dos reclamos y con la activación vía watcher, está en la [tabla de evidencia del back](https://github.com/MaximoBaronee/herencia-digital#evidencia-on-chain-del-flujo-principal).
 
 Las tres escrituras del titular se ejecutaron desde el front, con MetaMask y **sin** "Added protection":
 
@@ -201,7 +213,7 @@ Las tres escrituras del titular se ejecutaron desde el front, con MetaMask y **s
 
 ## 🐞 Incidencias
 
-Las dos tuvieron la misma causa: la opción **Added protection** de MetaMask envuelve la llamada en una delegación y no llega directa al contrato.
+Las dos tuvieron la misma causa: la opción **Added protection** de MetaMask envuelve la llamada en una delegación y no llega directa al contrato. Ocurrieron con el contrato anterior, pero la causa aplica igual a los actuales: con cuentas convertidas en cuentas inteligentes de MetaMask, conviene desactivar esa opción en cada confirmación.
 
 ### 1. Heartbeat revertido desde el front
 

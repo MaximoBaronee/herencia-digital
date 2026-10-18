@@ -1,97 +1,124 @@
 # 🎬 Guion del video — Herencia Digital
 
-Video de presentación y demo del Trabajo Final (máximo **5 minutos**). Objetivo de duración: **4:30**.
+Video de presentación y demo del Trabajo Final (máximo **5 minutos**). Objetivo de duración: **4:40**.
 
-Este documento contiene el guion por tomas. El guion de voz en off se agrega cuando terminen de grabarse las tomas.
+Cada toma dice **qué mostrar** y sugiere **qué decir**. Se graban por separado y se unen en la edición.
 
-## ✅ Cumplimiento de la entrega
+## ✅ Qué tiene que verse (checklist G del protocolo)
 
-| Requisito del protocolo | Estado |
+| Requisito | Dónde se cumple |
 |---|---|
-| CEI, eventos, tipos optimizados, OpenZeppelin | ✅ |
-| NatSpec en `/contracts` | ✅ |
-| Pruebas unitarias en `/test` | ✅ 43 passing |
-| Flujo core ejecutable (demo con scripts y front) | ✅ además, probado en Sepolia |
-| README: cómo ejecutar, análisis blockchain y Roadmap | ✅ |
-| **Video ≤ 5 minutos** | ❌ pendiente de grabar |
+| Duración máxima de 5 minutos | Suma de tomas: 4:40 |
+| La implementación real | Tomas 3 y 4: el código, los tests, el coverage y Slither |
+| El funcionamiento real | Toma 6: el flujo completo en Sepolia desde el front |
+| Evidencia real de la interacción con blockchain | Tomas 5 y 6: código verificado y transacciones en Etherscan, más el historial del front |
 
 ## 🧰 Antes de grabar
 
-- [ ] Terminal 1 en `front-herencia-digital` con `npm run dev` corriendo y el front abierto en `localhost:5173`.
-- [ ] MetaMask con **Imported Account 1** en la red **Sepolia**, sin otras notificaciones abiertas.
-- [ ] Pulsar **Heartbeat** una vez antes de grabar (el reloj puede estar en 0 s).
+### 1. Una instancia nueva de los contratos para la demo
+
+Los contratos actuales ya completaron el flujo: la herencia está activada y los dos herederos cobraron, así que **en ese contrato no se puede repetir**. Para grabar el flujo en vivo hace falta una instancia nueva, con el mismo código:
+
+1. En `herencia-digital`, con el `.env` completo, correr `npm run deploy -- --network sepolia`. Despliega y verifica los dos contratos, e imprime las direcciones nuevas.
+2. En el `.env.local` del front, reemplazar `VITE_CONTRACT_ADDRESS`, `VITE_WATCHER_ADDRESS` y `VITE_DEPLOY_BLOCK` por los valores nuevos. El bloque está en `deployments/sepolia.json` del back.
+3. Reiniciar `npm run dev` y completar las direcciones en la tabla de [datos de referencia](#-datos-de-referencia).
+
+### 2. Preparación
+
+- [ ] Front corriendo con `npm run dev` y abierto en `localhost:5173`.
+- [ ] MetaMask en la red **Sepolia**, con tres cuentas con nombre: **Titular**, **Heredero 1** y **Heredero 2**. Cada heredero necesita un poco de Sepolia ETH para el gas del reclamo.
 - [ ] **Desactivar "Added protection"** en cada confirmación de MetaMask.
-- [ ] Pestañas listas: README del back, VS Code con `DigitalInheritance.sol`, terminal en `herencia-digital` y Etherscan del contrato.
-- [ ] Tamaño de letra grande en terminal y editor.
-- [ ] Grabación de pantalla con `Cmd + Shift + 5` (macOS), con micrófono.
+- [ ] Pestañas listas: README del back, VS Code con los dos contratos, terminal en `herencia-digital` y Etherscan de los contratos nuevos.
+- [ ] `npm run coverage` corrido de antemano, para no esperar en cámara.
+- [ ] Letra grande en terminal y editor. Cerrar notificaciones.
+- [ ] **Nunca mostrar en pantalla el `.env` ni una clave privada**, tampoco la pantalla de MetaMask que la muestra.
+- [ ] Grabación de pantalla con micrófono: en Windows, `Win + G` u OBS; en macOS, `Cmd + Shift + 5`.
 
 ## 🎞️ Tomas
 
 ### Toma 1 · Presentación (0:00 – 0:25)
 
-Abre el README del back en el navegador, arriba del todo. Muestra el título y baja hasta el diagrama "¿Cómo funciona?" y la tabla del caso de Ana.
+**Mostrar:** el README del back, arriba del todo, y el diagrama de "¿Cómo funciona?".
 
-### Toma 2 · El contrato (0:25 – 1:05)
+**Decir:** "Herencia Digital es un testamento automático sobre Ethereum. El titular deposita ETH y confirma cada tanto que sigue activo. Si deja de hacerlo durante el plazo que eligió, sus herederos cobran su parte, sin notarios ni intermediarios."
 
-En VS Code, abre `DigitalInheritance.sol` y recorre despacio, sin leer todo:
+### Toma 2 · Por qué blockchain y arquitectura (0:25 – 0:55)
 
-1. Cabecera con `@title`/`@notice` y `ReentrancyGuard`.
-2. Los eventos y los errores custom.
-3. `claim()`: marca que primero actualiza el estado y después transfiere (CEI) y el `nonReentrant`.
+**Mostrar:** las secciones "¿Por qué blockchain?" y "Arquitectura" del README.
 
-### Toma 3 · Tests (1:05 – 1:35)
+**Decir:** "Usamos blockchain porque nadie puede impedir el reparto una vez que se cumplen las condiciones, cualquiera puede auditarlo y los fondos no pasan por un tercero. Son dos contratos: `DigitalInheritance` custodia los fondos y los reparte, e `InheritanceWatcher` activa la herencia llamando al primero."
 
-En la terminal de `herencia-digital` ejecuta `npm test`. Deja que se vea la lista y el **43 passing**. Resalta con el mouse el test de reentrancia.
+### Toma 3 · El código (0:55 – 1:45)
 
-### Toma 4 · Demo por scripts (1:35 – 2:35)
+**Mostrar,** en VS Code y sin leer todo:
+1. `DigitalInheritance.sol`: `status` y los dos `uint40` que comparten un slot de storage, y el titular `immutable`.
+2. Los errores custom y los eventos.
+3. `claim()`: primero actualiza el estado y recién después transfiere, con `nonReentrant`.
+4. `InheritanceWatcher.sol`: `trigger()` llamando a `triggerInheritance()`.
 
-Ejecuta `npm run demo`. Corre en menos de un segundo, así que **pausa y señala** cada bloque:
+**Decir:** "Ordenamos el storage para que tres variables entren en un solo slot y el titular es inmutable, lo que ahorra gas en cada llamada. Usamos errores custom y eventos para cada operación. En `claim()` aplicamos Checks-Effects-Interactions y el `ReentrancyGuard` de OpenZeppelin. El watcher es la interacción entre contratos: cuando vence el plazo, llama a la herencia."
 
-1. Deploy.
-2. Depósito de 10 ETH.
-3. Heartbeat.
-4. Inactividad.
-5. Trigger.
-6. Claims (≈6 y ≈4 ETH).
+### Toma 4 · Calidad: tests, coverage y Slither (1:45 – 2:15)
 
-Después ejecuta `npm run demo:cancel` y muestra el cancelar y el bloqueo con `ClaimsAlreadyStarted()`.
+**Mostrar:**
+1. En la terminal, `npm test` hasta el **83 passing**.
+2. El resultado de `npm run coverage`.
+3. La tabla de Slither del README.
 
-### Toma 5 · Contrato real en Sepolia (2:35 – 2:55)
+**Decir:** "Tenemos 83 tests, incluidos contratos atacantes que intentan reentrar o rechazar pagos. La cobertura es del 100 % en líneas y funciones. Slither reporta siete hallazgos, todos revisados y justificados en el README."
 
-Abre `https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code`. Muestra la marca verde de **código verificado** y la pestaña de transacciones.
+### Toma 5 · Contratos verificados (2:15 – 2:30)
 
-### Toma 6 · Front en vivo (2:55 – 3:55)
+**Mostrar:** los dos contratos nuevos en Etherscan, pestaña **Contract**, con la marca verde de código verificado.
 
-1. Abre `localhost:5173` y pulsa **Conectar wallet**. Señala el rol **Titular**, el estado, el balance y los herederos 60/40.
-2. Pulsa **Heartbeat**, confirma en MetaMask (sin "Added protection"). Muestra "Heartbeat confirmado" y la cuenta regresiva reiniciada.
-3. Escribe `0.01`, pulsa **Depositar ETH**, confirma y muestra el balance en 0.01 ETH.
+**Decir:** "Los dos contratos están desplegados en Sepolia y verificados: cualquiera puede leer el código que corre."
 
-### Toma 7 · Roadmap (3:55 – 4:20)
+### Toma 6 · Demo en Sepolia desde el front (2:30 – 4:00)
 
-Vuelve al README del back, sección **Roadmap**: baja por Fase 2 (ERC-20/721, recuperación social, aviso previo, `forceDeliverUnclaimed()` con Chainlink Automation) y el front React.
+**6a · Titular (2:30 – 3:00).** Conectar con la cuenta **Titular**. Señalar el rol, el estado, el plazo y los herederos 60/40. Depositar `0.1` ETH y hacer **Heartbeat**.
 
-### Toma 8 · Cierre (4:20 – 4:40)
+**Decir:** "Entro como titular, deposito 0.1 ETH y confirmo que sigo activo. Para la demo el plazo es de 10 minutos."
 
-Vuelve al título del README del back. Cierra mostrando los dos enlaces de repo en el checklist.
+> ✂️ **Corte.** Esperar 10 minutos sin hacer heartbeat. En la edición, un texto: "10 minutos después".
+
+**6b · Activación (3:00 – 3:30).** Cambiar a la cuenta **Heredero 1** y apretar **Activar herencia**. En MetaMask, mostrar que el destino es el **Watcher**. Después abrir la transacción en Etherscan, pestaña **Logs**: aparecen `TriggeredViaWatcher`, del watcher, e `InheritanceTriggered`, de la herencia.
+
+**Decir:** "Pasó el plazo sin señales del titular. Cualquiera puede activar la herencia. El botón llama al watcher y el watcher llama a la herencia: en Etherscan se ven los eventos de los dos contratos en la misma transacción."
+
+**6c · Reclamos e historial (3:30 – 4:00).** Con **Heredero 1**, **Reclamar mi parte** (0.06 ETH). Con **Heredero 2**, lo mismo (0.04 ETH). Bajar a la tarjeta **Historial** y abrir un link a Etherscan.
+
+**Decir:** "Cada heredero cobra su porcentaje una sola vez. El historial muestra cada movimiento con su transacción en Etherscan, y marca la activación que pasó de contrato a contrato."
+
+### Toma 7 · Limitaciones y roadmap (4:00 – 4:25)
+
+**Mostrar:** las secciones "Limitaciones conocidas del MVP" y "Roadmap" del README del back.
+
+**Decir:** "Documentamos las limitaciones del MVP, como la falta de una ventana de gracia después de la activación. La Fase 2 suma tokens ERC-20 y NFTs, recuperación social con guardianes y automatización con Chainlink. La Fase 3 apunta a auditoría externa y despliegue en una L2."
+
+### Toma 8 · Cierre (4:25 – 4:40)
+
+**Mostrar:** la tabla de evidencia on-chain y los links a los dos repos, en el README del back.
+
+**Decir:** "Todo el código, los tests y las transacciones reales están en los repositorios. Gracias."
 
 ## 📝 Notas de producción
 
-- **Graba cada toma por separado** y únelas en CapCut. Si una falla, repites solo esa.
-- **No uses "Activar herencia" en la toma del front.** Con un heredero cobrando, el trigger ya no es reversible y habría que desplegar otro contrato. El trigger y los claims se muestran en la toma 4 con el script local.
-- Si MetaMask tarda en confirmar, corta y acelera esa parte en la edición.
-- Si la toma 6 sale larga, puedes quitar el depósito y dejar solo el heartbeat.
+- **Graba cada toma por separado** y únelas en la edición. Si una falla, repites solo esa.
+- **El orden importa:** en cuanto un heredero cobra, la herencia ya no se puede cancelar. Si algo sale mal antes del primer reclamo, el titular puede apretar **Cancelar activación** y repetir.
+- **Si sobran 15 segundos,** después de la toma 4 se puede correr `npm run demo:cancel` para mostrar la cancelación por falsa alarma.
+- Si MetaMask tarda en confirmar, corta o acelera esa parte.
+- **Al terminar:** avisar para actualizar los dos READMEs y el `.env.example` del front con las direcciones y transacciones de la instancia nueva.
+- **Entrega:** el nombre del archivo lleva el apellido del integrante que registró al equipo en el formulario. Se sube a la carpeta de Drive de la comisión, y el link se agrega en los dos READMEs.
 
 ## 🔗 Datos de referencia
 
 | Dato | Valor |
 |---|---|
-| Contrato en Sepolia | `0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9` |
-| Wallet titular | `0xB4c296D61f50CEdF5b68082A9cd7012eCb1Eb697` |
-| Herederos | 60 % y 40 % |
-| Plazo de inactividad en Sepolia | 600 s |
+| `DigitalInheritance` de la demo | completar después del deploy |
+| `InheritanceWatcher` de la demo | completar después del deploy |
+| Primera ejecución completa, ya usada | `0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0` y watcher `0x68E5FE129B3f51e79bdCfa6eabe7019962b93422` |
+| Cuenta titular | `0xBDdB6C4FC08Af549d13A33455374e7fFBfD7fA70` |
+| Herederos | `0x5EEa…1fEB` (60 %) y `0x5312…1D92` (40 %) |
+| Plazo de inactividad | 600 s |
 | Repo del back | https://github.com/MaximoBaronee/herencia-digital |
 | Repo del front | https://github.com/johanriascos7777/front-herencia-digital |
-
-## 🎙️ Voz en off
-
-Pendiente: se entrega cuando terminen de grabarse las tomas, con el tiempo estimado de cada una y el archivo `.srt` de subtítulos.
