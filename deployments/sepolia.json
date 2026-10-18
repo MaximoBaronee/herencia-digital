@@ -1,0 +1,35 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0xBDdB6C4FC08Af549d13A33455374e7fFBfD7fA70",
+  "deployedAt": "2026-10-18T18:25:15.380Z",
+  "contracts": {
+    "DigitalInheritance": {
+      "address": "0x842e9fA385222a636e5382B35265adad4ef07d66",
+      "contract": "contracts/DigitalInheritance.sol:DigitalInheritance",
+      "constructorArguments": [
+        600,
+        120,
+        [
+          "0x5EEa7805E1920Ed024dBa8fC8c65A1fda2411fEB",
+          "0x5312d115b1cc87aD40bC58F775bbAA7079451D92"
+        ],
+        [
+          60,
+          40
+        ]
+      ],
+      "transactionHash": "0x2cd19a9802ee90fb726d0b05e844beb87d6125e47dbce4ef7905b132f397d660",
+      "blockNumber": 11942829
+    },
+    "InheritanceWatcher": {
+      "address": "0x4d46E7989185e60fE3FA2ef9633FA2316fA55eCC",
+      "contract": "contracts/InheritanceWatcher.sol:InheritanceWatcher",
+      "constructorArguments": [
+        "0x842e9fA385222a636e5382B35265adad4ef07d66"
+      ],
+      "transactionHash": "0x75f847fbd248178d240fd42fa8abc6f57821ab30cd5785d1259da3cad3cc1fec",
+      "blockNumber": 11942830
+    }
+  }
+}

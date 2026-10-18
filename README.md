@@ -9,8 +9,8 @@ durante un período configurable.
 ## 🚀 Puesta en marcha
 
 > 💡 **El "back" no se enciende.** Los contratos ya viven en la blockchain de Sepolia y funcionan 24/7 sin que tengas nada corriendo. Este repo lo usas para **compilar, probar y desplegar**.
-> - `DigitalInheritance`: [`0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0`](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code)
-> - `InheritanceWatcher`: [`0x68E5FE129B3f51e79bdCfa6eabe7019962b93422`](https://sepolia.etherscan.io/address/0x68E5FE129B3f51e79bdCfa6eabe7019962b93422#code)
+> - `DigitalInheritance`: [`0x842e9fA385222a636e5382B35265adad4ef07d66`](https://sepolia.etherscan.io/address/0x842e9fA385222a636e5382B35265adad4ef07d66#code)
+> - `InheritanceWatcher`: [`0x4d46E7989185e60fE3FA2ef9633FA2316fA55eCC`](https://sepolia.etherscan.io/address/0x4d46E7989185e60fE3FA2ef9633FA2316fA55eCC#code)
 
 ### 🆕 Primera vez (recién clonado)
 
@@ -18,7 +18,7 @@ durante un período configurable.
 git clone https://github.com/MaximoBaronee/herencia-digital.git
 cd herencia-digital
 npm install          # 1️⃣ instala Hardhat, OpenZeppelin y Chainlink (requiere Node.js 18+)
-npm test             # 2️⃣ compila solo y corre los 83 tests ✅
+npm test             # 2️⃣ compila solo y corre los 104 tests ✅
 npm run demo         # 3️⃣ opcional: flujo completo en una red local en memoria
 ```
 
@@ -75,8 +75,9 @@ Solo el titular necesita pedir Sepolia ETH a un faucet. Después le puede mandar
 | `HEIR_1` | ✅ | Dirección del heredero 1: empieza con `0x` y tiene 42 caracteres | MetaMask → copiar la dirección de esa cuenta |
 | `HEIR_2` | ✅ | Dirección del heredero 2, distinta de la anterior | Igual que `HEIR_1` |
 | `SEPOLIA_RPC_URL` | — | Nodo de Sepolia. Si queda vacío se usa uno público | Alchemy o Infura (gratis), solo si el público falla |
-| `HEIR_PERCENTAGES` | — | Porcentajes separados por coma, en el orden de los herederos. Vacío = `60,40` | — |
-| `INACTIVITY_PERIOD_SECONDS` | — | Plazo de inactividad en segundos. Vacío = 1 año. Para la demo: `600` | — |
+| `HEIR_PERCENTAGES` | — | Porcentajes separados por coma, en el orden de los herederos, cada uno al menos 1. Vacío = `60,40` | — |
+| `INACTIVITY_PERIOD_SECONDS` | — | Plazo de inactividad en segundos, mínimo 300. Vacío = 1 año. Para la demo: `600` | — |
+| `CLAIM_DELAY_SECONDS` | — | Ventana de impugnación en segundos, mínimo 60: espera entre la activación y el primer cobro. Vacío = 7 días. Para la demo: `120` | — |
 
 > ⚠️ **Usar como titular una cuenta solo de pruebas, nunca una con fondos reales.** Quien tenga esa clave controla la cuenta y el contrato. No compartirla por chat ni pegarla en otro archivo. Si el proyecto está en una carpeta sincronizada (OneDrive, Dropbox, Google Drive), el `.env` también se copia a esa nube: otra razón para usar una cuenta de pruebas.
 
@@ -90,7 +91,7 @@ Con el `.env` completo:
 npm run deploy -- --network sepolia
 ```
 
-Antes de gastar gas, el script valida todo y corta con un mensaje claro si algo falta: la clave del titular, saldo de Sepolia ETH, `HEIR_1` y `HEIR_2`, direcciones válidas y distintas entre sí, porcentajes que sumen 100 y un plazo entero positivo.
+Antes de gastar gas, el script valida todo y corta con un mensaje claro si algo falta: la clave del titular, saldo de Sepolia ETH, `HEIR_1` y `HEIR_2`, direcciones válidas y distintas entre sí, porcentajes de al menos 1 que sumen 100, y plazos que respeten los mínimos del contrato.
 
 Con los parámetros validados, el script:
 
@@ -118,34 +119,37 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
                                   ▼
                        🚨 triggerInheritance()   (cualquiera; el front pasa por InheritanceWatcher)
                                   │
+                                  ▼
+                       ⏳ ventana de impugnación (claimDelay): nadie puede cobrar todavía
+                                  │
                 ┌─────────────────┴──────────────────┐
                 ▼                                    ▼
       ↩️ cancelTrigger()                    🎁 claim() de cada heredero
-   (solo el titular, y solo si                (cada uno cobra su %,
-    nadie cobró todavía)                       una sola vez)
+   (solo el titular, y solo si                (al cerrarse la ventana; cada uno
+    nadie cobró todavía)                       cobra su %, una sola vez)
 ```
 
 | Rol | Quién es | Qué puede hacer |
 |---|---|---|
-| 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `cancelTrigger`, `sweepDust` |
-| 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | `claim()` cuando la herencia está activada |
+| 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `setClaimDelay`, `cancelTrigger`, `sweepDust` |
+| 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | `claim()` o `claimTo()` cuando la herencia está activada y se cerró la ventana de impugnación |
 | 👀 **Observador** | cualquier otra wallet | `triggerInheritance()` si el plazo venció, y leer el estado |
 | 🤖 **Watcher** | el contrato `InheritanceWatcher` | lo usa el botón "Activar herencia" del front: `trigger()` → `triggerInheritance()` |
 
 ### 🎬 Ejemplo: el caso de Ana
 
-> Ana (titular) deja **1 ETH** para sus hermanos **Bruno (60 %)** y **Carla (40 %)**, con un plazo de **30 días** de inactividad.
+> Ana (titular) deja **1 ETH** para sus hermanos **Bruno (60 %)** y **Carla (40 %)**, con un plazo de **30 días** de inactividad y una ventana de impugnación de **7 días**.
 
 | Día | Qué pasa | Estado |
 |:-:|---|:-:|
 | 0 | Ana despliega el contrato y llama `deposit()` con 1 ETH | 🟢 ACTIVE |
 | 10 | Ana llama `heartbeat()`: el reloj de 30 días **vuelve a empezar** | 🟢 ACTIVE |
 | 40 | Ana no responde: pasaron más de 30 días desde su último heartbeat | 🟡 plazo vencido |
-| 41 | Carla (o cualquiera) llama `triggerInheritance()`: el balance de 1 ETH queda congelado | 🔴 TRIGGERED |
-| 41 | Bruno llama `claim()` y recibe **0.6 ETH** | 🔴 TRIGGERED |
-| 42 | Carla llama `claim()` y recibe **0.4 ETH** | 🔴 TRIGGERED |
+| 41 | Carla (o cualquiera) llama `triggerInheritance()`: el balance de 1 ETH queda congelado y empieza la ventana de impugnación | 🔴 TRIGGERED |
+| 48 | Se cierra la ventana: Bruno llama `claim()` y recibe **0.6 ETH** | 🔴 TRIGGERED |
+| 49 | Carla llama `claim()` y recibe **0.4 ETH** | 🔴 TRIGGERED |
 
-**¿Y si fue una falsa alarma?** Si Ana vuelve entre el día 41 y el momento en que alguien cobra, llama `cancelTrigger()` y todo regresa a 🟢 ACTIVE sin perder fondos. Pero **en cuanto un heredero cobra, ya no hay vuelta atrás**.
+**¿Y si fue una falsa alarma?** Durante la ventana de impugnación, del día 41 al 48, nadie puede cobrar: si Ana vuelve, llama `cancelTrigger()` y todo regresa a 🟢 ACTIVE sin perder fondos. Pero **en cuanto un heredero cobra, ya no hay vuelta atrás**.
 
 ---
 
@@ -194,12 +198,14 @@ contracts/
   DigitalInheritance.sol      # contrato principal: custodia y reparto
   InheritanceWatcher.sol      # vigía que llama a triggerInheritance(); interfaz de Chainlink Automation
   mocks/                      # solo para tests, no se despliegan
-    ReentrancyAttacker.sol    # mock usado solo en tests de seguridad
-    RejectingHeir.sol         # mock: heredero que rechaza ETH (claim falla, sweep bloqueado)
-    TriggerAndClaimHeir.sol   # mock: heredero que dispara y reclama en una sola tx
+    ReentrancyAttacker.sol    # mock: heredero que intenta reentrar en claim() y claimTo()
+    RejectingHeir.sol         # mock: heredero que rechaza ETH (cobra con claimTo)
+    TriggerAndClaimHeir.sol   # mock: heredero que intenta activar y cobrar en una sola tx
+    ContractOwner.sol         # mock: titular contrato que rechaza ETH o intenta reentrar
 test/
-  DigitalInheritance.test.js  # suite de tests unitarios (Hardhat + Chai)
-  InheritanceWatcher.test.js  # tests del watcher e integración entre los dos contratos
+  DigitalInheritance.test.js            # suite de tests unitarios (Hardhat + Chai)
+  DigitalInheritance.invariants.test.js # test de propiedades con escenarios aleatorios
+  InheritanceWatcher.test.js            # tests del watcher e integración entre los dos contratos
 scripts/
   deploy.js                   # despliega DigitalInheritance + InheritanceWatcher y los verifica
   verify.js                   # reintenta la verificación en Etherscan sin redesplegar
@@ -207,7 +213,8 @@ scripts/
   demo.js                     # flujo completo end-to-end con logs de estado
   demo-cancel.js              # escenario de falsa alarma con cancelTrigger()
 deployments/
-  <red>.json                  # direcciones, argumentos y hashes (lo genera deploy.js en redes públicas)
+  sepolia.json                # despliegue actual: direcciones, argumentos y hashes (lo genera deploy.js)
+  sepolia-v1.json             # despliegue de la versión 1, conservado como registro
 ```
 
 **Flujo principal:**
@@ -215,6 +222,7 @@ deployments/
 ```
 deploy → deposit → heartbeat (periódico) → ... inactividad ...
        → triggerInheritance() (directo, o vía InheritanceWatcher, que es lo que usa el front)
+       → ... ventana de impugnación (claimDelay) ...
        → claim() por cada heredero
 ```
 
@@ -223,15 +231,15 @@ deploy → deposit → heartbeat (periódico) → ... inactividad ...
 ```
                  triggerInheritance()
         ┌────────────────────────────────►
-ACTIVE                                       TRIGGERED
+ACTIVE                                       TRIGGERED ──(claimDelay)──► cobros habilitados
         ◄────────────────────────────────
           cancelTrigger()  (solo si nadie
-          reclamó todavía: claimsCount==0)
+          cobró todavía: claimsCount==0)
 ```
 
-- `heartbeat()`, `withdraw()`, `setHeirs()`, `setInactivityPeriod()` → solo en `ACTIVE`.
-- `claim()`, `sweepDust()`, `cancelTrigger()` → solo en `TRIGGERED`.
-- Ni bien hay un primer `claim()`, `cancelTrigger()` queda bloqueada para
+- `deposit()`, `heartbeat()`, `withdraw()`, `setHeirs()`, `setInactivityPeriod()`, `setClaimDelay()` → solo en `ACTIVE`.
+- `claim()`, `claimTo()`, `sweepDust()`, `cancelTrigger()` → solo en `TRIGGERED`. Los cobros, además, recién cuando se cierra la ventana de impugnación.
+- Ni bien hay un primer cobro, `cancelTrigger()` queda bloqueada para
   siempre: el trigger pasa a ser irreversible (ver [Seguridad](#seguridad)).
 
 ### Contrato: `DigitalInheritance.sol`
@@ -239,10 +247,12 @@ ACTIVE                                       TRIGGERED
 | Elemento | Detalle |
 |---|---|
 | Herencia | `ReentrancyGuard` (OZ). El titular es un `address public immutable owner`, control de acceso propio (ver [Gas](#optimización-de-gas)) |
-| Struct `Heir` | `{ address account; uint8 percentage; }` — empaqueta en 1 slot de storage |
-| Storage packing | `status` + `lastHeartbeat` (`uint40`) + `inactivityPeriod` (`uint40`) comparten 1 slot |
+| Storage packing | Las siete variables de control (`status`, tres `uint40` de tiempo, `claimDelay`, `claimsCount` y el porcentaje pendiente) comparten 1 slot |
+| Herederos | `address[]` para recorrerlos y `mapping(address => HeirInfo)`: porcentaje y "ya cobró" en 1 slot por heredero. El porcentaje se guarda una sola vez |
+| Saldo | El saldo de la herencia es el balance real del contrato: no hay contabilidad interna que se pueda desfasar |
 | Errores | Custom errors (`error X()`) en vez de `require(string)` → menor costo de gas y de bytecode |
-| Eventos | `Deposited`, `Heartbeat`, `HeirsUpdated`, `InactivityPeriodUpdated`, `InheritanceTriggered`, `TriggerCancelled`, `Claimed`, `Withdrawn`, `DustSwept` |
+| Eventos | `Deposited`, `Heartbeat`, `HeirsUpdated`, `InactivityPeriodUpdated`, `ClaimDelayUpdated`, `InheritanceTriggered`, `TriggerCancelled`, `Claimed`, `Withdrawn`, `DustSwept` |
+| Orden del código | Funciones ordenadas por visibilidad, como recomienda la guía de estilo de Solidity: constructor y `receive`, externas, externas de lectura y privadas |
 
 ### Contrato: `InheritanceWatcher.sol`
 
@@ -258,14 +268,16 @@ ACTIVE                                       TRIGGERED
 
 | Función | Quién | Cuándo | Qué hace |
 |---|---|---|---|
-| `deposit()` / `receive()` | titular | siempre (en `TRIGGERED` no entra al reparto) | deposita ETH |
+| `deposit()` / `receive()` | titular | `ACTIVE` | deposita ETH |
 | `heartbeat()` | titular | `ACTIVE` | reinicia el temporizador |
-| `setHeirs()` / `setInactivityPeriod()` | titular | `ACTIVE` | reconfigura herederos/plazo |
+| `setHeirs()` / `setInactivityPeriod()` / `setClaimDelay()` | titular | `ACTIVE` | reconfigura herederos y plazos, respetando los mínimos |
 | `withdraw(amount)` | titular | `ACTIVE` | retira fondos |
-| `triggerInheritance()` | cualquiera | `ACTIVE`, plazo vencido | pasa a `TRIGGERED`, congela `inheritedBalance` |
-| `cancelTrigger()` | titular | `TRIGGERED`, `claimsCount == 0` | vuelve a `ACTIVE`, cuenta como heartbeat |
-| `claim()` | heredero | `TRIGGERED` | cobra su porcentaje, una sola vez |
-| `sweepDust(to)` | titular | `TRIGGERED`, todos ya cobraron | recupera el resto por redondeo |
+| `triggerInheritance()` | cualquiera | `ACTIVE`, plazo vencido | pasa a `TRIGGERED`, congela `inheritedBalance` y abre la ventana de impugnación |
+| `cancelTrigger()` | titular | `TRIGGERED`, nadie cobró | vuelve a `ACTIVE`, cuenta como heartbeat |
+| `claim()` | heredero | `TRIGGERED`, ventana cerrada | cobra su porcentaje, una sola vez |
+| `claimTo(to)` | heredero | `TRIGGERED`, ventana cerrada | como `claim()`, pero el ETH va a otra dirección |
+| `sweepDust(to)` | titular | `TRIGGERED` | recupera el ETH no reservado para los herederos: restos de redondeo y ETH forzado |
+| `claimsOpenAt()` / `sweepableBalance()` | cualquiera | siempre (`view`) | cuándo se cierra la ventana y cuánto se puede barrer |
 | `checkUpkeep()` (watcher) | un servicio de automatización, fuera de la cadena | siempre (es `view`) | devuelve `true` si la herencia ya se puede activar |
 | `trigger()` / `performUpkeep()` (watcher) | cualquiera; el front usa `trigger()` | `ACTIVE`, plazo vencido | llama a `triggerInheritance()` |
 
@@ -288,22 +300,25 @@ compilar, testear o correr la demo local.
 npm test
 ```
 
-Las suites (`test/DigitalInheritance.test.js` y `test/InheritanceWatcher.test.js`) cubren:
+Las suites cubren:
 
-- Deploy y validación de parámetros iniciales (porcentajes, herederos duplicados, dirección cero, arrays de distinto largo) y estado inicial.
-- Depósitos (por `deposit()` y por `receive()`), que un tercero no pueda depositar, y que un depósito en `TRIGGERED` no altere el snapshot.
+- Deploy y validación de parámetros iniciales: porcentajes, herederos duplicados, dirección cero, arrays de distinto largo, plazos mínimos y estado inicial.
+- Depósitos por `deposit()` y por `receive()`, que un tercero no pueda depositar, y que no se pueda depositar con la herencia activada.
 - Heartbeat: quién puede llamarlo, cómo pospone el trigger y que no se pueda usar en `TRIGGERED`.
-- Alta/baja de herederos y cambio del período de inactividad: que los herederos reemplazados dejen de serlo, que nada se pueda cambiar en `TRIGGERED`, y que un período de 0 habilite el trigger de inmediato (no hay cota mínima).
+- Herederos y plazos: que los herederos reemplazados dejen de serlo, que no haya porcentajes en 0, que se respeten los mínimos y que nada se pueda cambiar en `TRIGGERED`.
 - Retiro de fondos por el titular, incluyendo límites y que se bloquee tras el trigger.
-- `triggerInheritance()`: que sea permissionless, que respete el plazo (incluido el límite exacto del deadline y los segundos restantes que informa `TooEarly`), que no se pueda disparar dos veces, y que funcione con balance 0.
-- `cancelTrigger()`: que funcione solo si nadie reclamó, que reinicie `lastHeartbeat`, que quede bloqueada para siempre en cuanto hay un primer `claim()`, y que un heredero contrato (`TriggerAndClaimHeir`) pueda disparar y reclamar en la misma transacción, sin dejar ventana real de cancelación.
-- `claim()`: reparto proporcional correcto e independiente del orden de los reclamos, anti doble-reclamo, que solo reclamen herederos, heredero con 0 %, y un heredero cuya dirección rechaza ETH (`RejectingHeir`): su `claim()` revierte con `TransferFailed` y `sweepDust()` queda bloqueado.
-- **Reentrancia**: un contrato atacante (`ReentrancyAttacker`) intenta reclamar dos veces desde su `receive()`; el test verifica que la transacción revierte gracias al patrón Checks-Effects-Interactions + `ReentrancyGuard`.
-- `sweepDust()`: recuperación del resto por redondeo entero, solo después de que todos reclamaron; incluye lo depositado después del trigger y no toca el ETH que entra al contrato sin pasar por `receive()`.
-- Vistas: `getHeirs`, `percentageOf`, `isHeir`, `isTriggerable` y `timeUntilTrigger`.
-- `InheritanceWatcher`: `checkUpkeep()` en `false` antes del plazo, después de un heartbeat y una vez activada la herencia, y en `true` apenas vence; `performUpkeep()` y `trigger()` activan la herencia con el watcher como `triggeredBy`; se propagan `TooEarly` e `InvalidState`; el titular puede cancelar un trigger hecho por el watcher; y el flujo completo hasta el reclamo de cada heredero.
+- `triggerInheritance()`: que sea permissionless, que respete el plazo (incluido el límite exacto del deadline y los segundos restantes que informa `TooEarly`), que no se pueda disparar dos veces, que funcione con balance 0 y que reparta también el ETH forzado.
+- **Ventana de impugnación**: nadie cobra antes de que se cierre, `ClaimsNotOpenYet` informa los segundos que faltan, el titular puede cancelar durante la ventana, y un heredero contrato (`TriggerAndClaimHeir`) ya no puede activar y cobrar en la misma transacción.
+- `cancelTrigger()`: que funcione solo si nadie cobró, que reinicie `lastHeartbeat` y que quede bloqueada para siempre en cuanto hay un primer cobro.
+- `claim()` y `claimTo()`: reparto proporcional correcto e independiente del orden de los cobros, anti doble cobro, que solo cobren herederos, y que un heredero cuya dirección rechaza ETH (`RejectingHeir`) cobre con `claimTo()` sin bloquear a nadie.
+- **Reentrancia**: un contrato atacante (`ReentrancyAttacker`) intenta cobrar dos veces desde su `receive()`, por `claim()` y por `claimTo()`; el test verifica que la transacción revierte gracias al patrón Checks-Effects-Interactions + `ReentrancyGuard`.
+- `sweepDust()`: recupera solo lo no reservado, nunca la parte de quien no cobró; incluye los restos de redondeo y el ETH forzado.
+- **Titular contrato** (`ContractOwner`): `withdraw()` y `sweepDust()` revierten si el destino rechaza ETH, y bloquean la reentrada del titular.
+- Vistas: `getHeirs`, `percentageOf`, `isHeir`, `claimed`, `isTriggerable`, `timeUntilTrigger`, `claimsOpenAt`, `sweepableBalance` y los mínimos.
+- `InheritanceWatcher`: `checkUpkeep()` en `false` antes del plazo, después de un heartbeat y una vez activada la herencia, y en `true` apenas vence; `performUpkeep()` y `trigger()` activan la herencia con el watcher como `triggeredBy`; se propagan `TooEarly` e `InvalidState`; y el flujo completo hasta el cobro de cada heredero.
+- **Propiedades con entradas aleatorias** (`DigitalInheritance.invariants.test.js`): en 30 escenarios con entre 1 y 10 herederos, porcentajes, montos y ETH forzado aleatorios, y barridos intercalados con los cobros, verifica que cada heredero cobre exactamente su parte, que el barrido nunca toque lo reservado y que el contrato termine en 0 sin crear ni perder ETH. Usa una semilla fija, así cualquier falla se puede reproducir.
 
-83 tests, todos en verde. Cobertura de los dos contratos: 100 % de líneas, sentencias y funciones (detalle en [Cobertura](#cobertura)).
+104 tests, todos en verde. Cobertura de los dos contratos: 100 % en todas las métricas (detalle en [Cobertura](#cobertura)).
 
 ## Cobertura
 
@@ -315,14 +330,11 @@ Mide los dos contratos del sistema. Los mocks de `contracts/mocks/` son código 
 
 | Contrato | Sentencias | Ramas | Funciones | Líneas |
 |---|---:|---:|---:|---:|
-| `DigitalInheritance` | 100 % | 93.59 % | 100 % | 100 % |
+| `DigitalInheritance` | 100 % | 100 % | 100 % | 100 % |
 | `InheritanceWatcher` | 100 % | 100 % | 100 % | 100 % |
-| **Total** | **100 %** | **93.75 %** | **100 %** | **100 %** |
+| **Total** | **100 %** | **100 %** | **100 %** | **100 %** |
 
-Las 5 ramas sin cubrir no se pueden provocar desde una cuenta normal:
-- **`revert TransferFailed()` en `withdraw()` y `sweepDust()`**: solo ocurre si quien recibe el ETH es un contrato que lo rechaza. En `withdraw()` el que recibe es siempre el titular.
-- **La rama de reentrancia de `nonReentrant` en `withdraw()` y `sweepDust()`**: solo ocurre si quien recibe el ETH vuelve a llamar al contrato. La protección contra reentrancia sí está probada en `claim()`, con `ReentrancyAttacker`.
-- **`revert NoHeirs()` en `triggerInheritance()`**: es una defensa extra. El constructor y `setHeirs()` ya exigen al menos un heredero, así que nunca se llega a ese punto.
+Están cubiertas incluso las ramas que una cuenta normal no puede provocar, como un titular que rechaza ETH o que intenta reentrar: las prueba el mock `ContractOwner`.
 
 ## Análisis estático (Slither)
 
@@ -333,13 +345,14 @@ pip install slither-analyzer
 npm run slither      # equivale a slither . ; la configuración está en slither.config.json
 ```
 
-`slither.config.json` deja fuera las dependencias (`node_modules`) y los mocks de test. Sobre `DigitalInheritance` e `InheritanceWatcher`, Slither reporta 7 resultados en 3 detectores. Ninguno es sobre `InheritanceWatcher` y ninguno es de severidad alta. No quedó ningún hallazgo que requiriera corrección.
+`slither.config.json` deja fuera las dependencias (`node_modules`) y los mocks de test. Sobre `DigitalInheritance` e `InheritanceWatcher`, Slither reporta 7 resultados en 2 detectores. Ninguno es sobre `InheritanceWatcher`, ninguno es de severidad alta o media, y no quedó ningún hallazgo que requiriera corrección.
 
 | Detector | Dónde | Clasificación | Justificación |
 |---|---|---|---|
-| `uninitialized-local` (1) | `_setHeirs()`, variable `sum` | Falso positivo | En Solidity una variable local `uint256` empieza en 0. `sum` es un acumulador y ese valor inicial es el correcto. |
-| `timestamp` (3) | `triggerInheritance()`, `timeUntilTrigger()`, `isTriggerable()` | Aceptado | Un dead man's switch necesita medir tiempo. Un validador solo puede correr `block.timestamp` unos pocos segundos, y el plazo de inactividad se mide en días o meses: ese desvío no cambia el resultado. |
-| `low-level-calls` (3) | `withdraw()`, `claim()`, `sweepDust()` | Aceptado | `call{value: ...}` es la forma recomendada de enviar ETH: `transfer` y `send` tienen un límite fijo de gas que puede fallar con billeteras inteligentes. Se chequea el resultado (`TransferFailed`) y se aplican Checks-Effects-Interactions y `nonReentrant`. |
+| `timestamp` (4) | `triggerInheritance()`, `timeUntilTrigger()`, `isTriggerable()` y la ventana de impugnación en `_claim()` | Aceptado | Un dead man's switch necesita medir tiempo. Un validador solo puede correr `block.timestamp` unos pocos segundos, y los plazos se miden en minutos, días o meses: ese desvío no cambia el resultado. |
+| `low-level-calls` (3) | `withdraw()`, `_claim()` y `sweepDust()` | Aceptado | `call{value: ...}` es la forma recomendada de enviar ETH: `transfer` y `send` tienen un límite fijo de gas que puede fallar con billeteras inteligentes. Se chequea el resultado (`TransferFailed`) y se aplican Checks-Effects-Interactions y `nonReentrant`. |
+
+La versión 1 tenía además un falso positivo de `uninitialized-local` sobre la variable `sum` de `_setHeirs()`. Se eliminó inicializándola de forma explícita en 0.
 
 ## Cómo correr la demo
 
@@ -356,7 +369,8 @@ cada paso:
 3. Heartbeat.
 4. Avance del reloj de la red (`evm_increaseTime`) para simular inactividad: `checkUpkeep()` del watcher pasa a `true`.
 5. `performUpkeep()` del watcher, que llama a `triggerInheritance()`.
-6. `claim()` de cada heredero, mostrando los balances antes/después.
+6. Ventana de impugnación: un cobro inmediato revierte con `ClaimsNotOpenYet`, y el reloj avanza hasta que se cierra.
+7. `claim()` de cada heredero, mostrando los balances antes/después.
 
 Hay una segunda demo dedicada al escenario de falsa alarma:
 
@@ -366,8 +380,8 @@ npm run demo:cancel
 
 `scripts/demo-cancel.js` simula que el titular pierde señal (no manda
 heartbeat), un tercero dispara la herencia de buena fe, y el titular
-recupera señal **antes** de que algún heredero cobre → `cancelTrigger()`
-revierte todo a `ACTIVE` sin pérdida de fondos. Al final muestra también el
+recupera señal **durante la ventana de impugnación**, cuando ningún heredero
+puede cobrar todavía → `cancelTrigger()` revierte todo a `ACTIVE` sin pérdida de fondos. Al final muestra también el
 caso contrario: si llega tarde y un heredero ya cobró, `cancelTrigger()`
 revierte con `ClaimsAlreadyStarted()`.
 
@@ -385,14 +399,16 @@ Red: **Ethereum Sepolia** (chain id `11155111`). Los datos completos del desplie
 
 | Contrato | Dirección | Código verificado |
 |---|---|---|
-| `DigitalInheritance` | `0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0` | [Etherscan](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code) |
-| `InheritanceWatcher` | `0x68E5FE129B3f51e79bdCfa6eabe7019962b93422` | [Etherscan](https://sepolia.etherscan.io/address/0x68E5FE129B3f51e79bdCfa6eabe7019962b93422#code) |
+| `DigitalInheritance` | `0x842e9fA385222a636e5382B35265adad4ef07d66` | [Etherscan](https://sepolia.etherscan.io/address/0x842e9fA385222a636e5382B35265adad4ef07d66#code) |
+| `InheritanceWatcher` | `0x4d46E7989185e60fE3FA2ef9633FA2316fA55eCC` | [Etherscan](https://sepolia.etherscan.io/address/0x4d46E7989185e60fE3FA2ef9633FA2316fA55eCC#code) |
 
-Parámetros: titular `0xBDdB6C4FC08Af549d13A33455374e7fFBfD7fA70`, herederos `0x5EEa…1fEB` (60 %) y `0x5312…1D92` (40 %), plazo de inactividad de 600 s.
+Parámetros: titular `0xBDdB6C4FC08Af549d13A33455374e7fFBfD7fA70`, herederos `0x5EEa…1fEB` (60 %) y `0x5312…1D92` (40 %), plazo de inactividad de 600 s y ventana de impugnación de 120 s, cortos para poder mostrar el flujo en el video. Transacciones de deploy: [`0x2cd19a98…`](https://sepolia.etherscan.io/tx/0x2cd19a9802ee90fb726d0b05e844beb87d6125e47dbce4ef7905b132f397d660) y [`0x75f847fb…`](https://sepolia.etherscan.io/tx/0x75f847fbd248178d240fd42fa8abc6f57821ab30cd5785d1259da3cad3cc1fec). El bytecode desplegado coincide con el código de este repo.
 
 ### Evidencia on-chain del flujo principal
 
-Ejecutado el 18/10/2026: los deploys con `npm run deploy`, y el resto desde el front con MetaMask. Cada link abre la transacción en Etherscan.
+**Versión 2, la actual:** _pendiente_. El flujo completo se ejecuta al grabar el video, y sus transacciones se agregan acá.
+
+**Versión 1:** ejecutado el 18/10/2026 sobre los contratos `0xe45D…a6a0` y `0x68E5…3422`, antes de las correcciones de la [revisión de seguridad](#revisión-de-seguridad-y-correcciones-versión-2). Los deploys se hicieron con `npm run deploy`, y el resto desde el front con MetaMask. Cada link abre la transacción en Etherscan.
 
 | # | Acción | Quién | Transacción |
 |:-:|---|---|---|
@@ -408,18 +424,26 @@ Ejecutado el 18/10/2026: los deploys con `npm run deploy`, y el resto desde el f
 
 En la transacción 7, la pestaña **Logs** muestra los dos eventos de la interacción entre contratos: `TriggeredViaWatcher`, emitido por el watcher, e `InheritanceTriggered`, emitido por la herencia con el watcher como `triggeredBy`. Las cuentas de prueba son cuentas inteligentes de MetaMask (EIP-7702), por eso en Etherscan el campo *To* de las transacciones 3 a 9 muestra el contrato de delegación de MetaMask; los eventos de cada transacción muestran la llamada real a los contratos.
 
-Estado final: la herencia quedó activada, los dos herederos cobraron y el contrato quedó con saldo 0.
+Estado final de la versión 1: la herencia quedó activada, los dos herederos cobraron y el contrato quedó con saldo 0. Su registro está en [`deployments/sepolia-v1.json`](deployments/sepolia-v1.json).
 
-El despliegue anterior, previo a `InheritanceWatcher`, sigue en [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9) y ya no se usa.
+El primer despliegue, previo a `InheritanceWatcher`, sigue en [`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9). Ninguno de los dos despliegues anteriores se usa.
 
 ## Seguridad
 
-- **Checks-Effects-Interactions**: en `claim()`, `withdraw()` y `sweepDust()`
-  el estado (`claimed`, `depositBalance`) se actualiza *antes* de la llamada
-  externa que transfiere ETH.
-- **ReentrancyGuard**: `nonReentrant` en las tres funciones que mueven valor,
-  como segunda capa de defensa además del CEI. Probado explícitamente con un
-  contrato atacante en los tests.
+- **Checks-Effects-Interactions**: en `claim()`, `claimTo()`, `withdraw()` y
+  `sweepDust()` el estado (`claimed`, `claimsCount`, el porcentaje pendiente)
+  y el evento se actualizan *antes* de la llamada externa que transfiere ETH.
+- **ReentrancyGuard**: `nonReentrant` en las cuatro funciones que mueven valor,
+  como segunda capa de defensa además del CEI. Probado explícitamente con
+  contratos atacantes en los tests, tanto de heredero como de titular.
+- **Ventana de impugnación** (`claimDelay`): entre la activación y el primer
+  cobro hay un plazo mínimo de 1 minuto, configurable por el titular. Nadie
+  puede activar y cobrar en la misma transacción, y el titular siempre tiene
+  tiempo de cancelar una activación por error.
+- **Reserva de los herederos**: `sweepDust()` solo puede llevarse lo que no
+  está reservado para quien todavía no cobró. La reserva redondea igual que
+  los cobros, así que nunca queda por debajo de lo que falta pagar; lo
+  verifica el test de propiedades con escenarios aleatorios.
 - **Control de acceso**: modificador `onlyOwner` propio sobre un
   `address public immutable owner` fijado en el deploy (se reemplazó el
   `Ownable` de OpenZeppelin, ver [Gas](#optimización-de-gas)) en todas las
@@ -434,14 +458,36 @@ El despliegue anterior, previo a `InheritanceWatcher`, sigue en [`0xF7DE6Dd4dB38
 - **Errores custom**: además del ahorro de gas, dan información estructurada
   (ej. `TooEarly(secondsRemaining)`, `InsufficientBalance(requested, available)`).
 - **Solidity ^0.8.20**: overflow/underflow revierten por defecto. Fuera de los
-  loops, el único `unchecked` es la resta de `withdraw()`, justo después de
-  comprobar que `amount` no supera el saldo.
+  loops, el único `unchecked` está en `_claim()`, sobre `claimsCount` y el
+  porcentaje pendiente: cada heredero cobra una sola vez, hay a lo sumo 100
+  herederos y sus porcentajes suman 100, así que no pueden desbordar.
+- **Saldo = balance real**: el contrato no lleva un saldo interno aparte. Así
+  el ETH que entra por fuera de `deposit()` (por ejemplo con `selfdestruct`)
+  se reparte o se puede barrer, en vez de quedar atrapado.
 - **Snapshot de balance** (`inheritedBalance`): el reparto se calcula sobre
   una foto fija tomada en `triggerInheritance()`, así el orden en que
-  reclaman los herederos no afecta el monto que le toca a cada uno.
-- **Límite conocido**: al ser porcentajes enteros con división entera, puede
+  cobran los herederos no afecta el monto que le toca a cada uno.
+- **Restos de redondeo**: al ser porcentajes enteros con división entera, puede
   quedar un resto de pocos *wei* sin repartir; `sweepDust()` se lo asigna al
-  titular una vez que todos los herederos ya cobraron.
+  titular, sin esperar a que cobren todos.
+
+### Revisión de seguridad y correcciones (versión 2)
+
+Una revisión de la versión 1 encontró tres problemas. Ninguno permitía robar
+fondos, pero los tres se corrigieron antes de desplegar la versión 2:
+
+| # | Severidad | Hallazgo en la versión 1 | Corrección en la versión 2 |
+|:-:|---|---|---|
+| 1 | Media | Un heredero contrato podía activar la herencia y cobrar en la misma transacción. Con eso bloqueaba la cancelación sin darle tiempo real al titular. | Ventana de impugnación (`claimDelay`) entre la activación y el primer cobro. El test con `TriggerAndClaimHeir` ahora verifica que ese ataque revierte. |
+| 2 | Media | Un heredero cuya dirección rechaza ETH perdía su parte y además bloqueaba `sweepDust()` para siempre. | `claimTo()` le permite cobrar en otra dirección, y `sweepDust()` ya no espera a que cobren todos: barre solo lo no reservado. |
+| 3 | Baja | El ETH forzado al contrato no entraba en la contabilidad interna, así que no se repartía ni se podía recuperar. | Se eliminó el saldo interno: el contrato usa su balance real, y `sweepDust()` recupera ese ETH. |
+
+La misma revisión marcó tres riesgos menores, también resueltos: el plazo de
+inactividad podía ser 0 (ahora tiene un mínimo de 5 minutos), se podía
+depositar con la herencia ya activada (ahora solo en `ACTIVE`) y faltaban
+pruebas de propiedades (ahora hay un test con escenarios aleatorios). La
+revisión validó como correctas la protección contra reentrancia, el doble
+cobro, el overflow y el control de acceso.
 
 ### `cancelTrigger()` y el punto de no retorno
 
@@ -451,31 +497,33 @@ titular está vivo pero no mandó heartbeat a tiempo (viaje, pérdida de señal,
 etc.). Sin una salida, esa falsa alarma sería irreversible e injusta.
 `cancelTrigger()` resuelve eso, pero con una restricción clave:
 
-> **Una vez que un heredero ya ejecutó `claim()`, `cancelTrigger()` queda
-> bloqueada para siempre** (revierte con `ClaimsAlreadyStarted`).
+> **Una vez que un heredero ya cobró, `cancelTrigger()` queda bloqueada para
+> siempre** (revierte con `ClaimsAlreadyStarted`). Para que eso no deje al
+> titular sin margen, la ventana de impugnación garantiza que nadie pueda
+> cobrar durante `claimDelay` segundos después de la activación.
 
 Se evaluaron dos alternativas:
 
 1. **Permitir cancelar siempre**, incluso con claims parciales ya hechos.
    Se descartó: el heredero que ya cobró se queda con ETH que solo le
-   correspondía si la herencia era real, y `depositBalance` ya quedó
+   correspondía si la herencia era real, y el balance ya quedó
    reducido por ese cobro — el contrato volvería a `ACTIVE` con una
    contabilidad que ya no coincide con lo que el titular cree tener. Peor
    aún, crea un incentivo perverso: a cualquier heredero le conviene
    reclamar *apenas* ve el trigger, aunque sospeche que es falsa alarma,
    para asegurarse su parte antes de que el titular llegue a cancelar.
-2. **Bloquear la cancelación en el primer `claim()`** (la que se
+2. **Bloquear la cancelación en el primer cobro** (la que se
    implementó). El trigger pasa a ser reversible mientras nadie cobró, e
-   irreversible en cuanto empieza el reparto — mismo criterio de "todo o
-   nada" que ya se usa en `sweepDust()`. Es más simple, no requiere que el
-   titular reponga fondos para "deshacer" cobros ya hechos, y elimina la
-   carrera entre heredero y titular.
+   irreversible en cuanto empieza el reparto. Es más simple, no requiere que
+   el titular reponga fondos para "deshacer" cobros ya hechos, y con la
+   ventana de impugnación elimina la carrera entre heredero y titular: durante
+   esa ventana nadie puede cobrar, así que el titular siempre tiene tiempo.
 
-Efecto práctico: cuanto antes reaccione el titular después de un trigger por
-error, más margen tiene. Una vez que un heredero cobra, el proceso ya no se
-puede frenar — es una limitación conocida y documentada, no un bug: llamar a
-`cancelTrigger()` también actúa como heartbeat (reinicia `lastHeartbeat`),
-así que el titular tiene el mismo incentivo de siempre para reaccionar rápido.
+Efecto práctico: el titular tiene al menos `claimDelay` segundos para
+reaccionar a una activación por error. Pasada la ventana puede cancelar
+mientras nadie haya cobrado, pero una vez que un heredero cobra, el proceso
+ya no se puede frenar. Llamar a `cancelTrigger()` también actúa como
+heartbeat (reinicia `lastHeartbeat`).
 
 ### Modelo de amenazas: identidad del titular y de los herederos
 
@@ -533,23 +581,44 @@ de las dos tenía sentido acá — la titularidad de una herencia no debería
 ser transferible, y un `renounceOwnership()` accidental habría dejado el
 contrato sin nadie que pueda hacer `heartbeat()` nunca más.
 
+**Versión 2: menos storage.** Las correcciones de la versión 2 también
+bajaron el gas de casi todas las operaciones. Promedios de la suite de tests,
+salvo donde se indica:
+
+| Función | Versión 1 | Versión 2 | Diferencia |
+|---|---:|---:|---:|
+| `deposit()` | 45.223 | 25.152 | **−20.071** |
+| `claim()` | 83.871 | 45.784 | **−38.087** |
+| `setHeirs()` | 92.041 | 67.360 | **−24.681** |
+| `withdraw()` | 39.934 | 34.910 | −5.024 |
+| `triggerInheritance()` (máximo) | 54.786 | 50.634 | −4.152 |
+| `cancelTrigger()` | 30.309 | 28.397 | −1.912 |
+| Deploy con 2 herederos | 1.601.814 | 1.840.608 | +238.794 (una sola vez) |
+
+**Por qué:**
+- `deposit()` ya no escribe storage: el saldo de la herencia es el balance
+  real del contrato, así que solo emite el evento.
+- Cada heredero ocupa un solo slot (`HeirInfo`: porcentaje y "ya cobró"), en
+  vez de un mapping de porcentaje, otro de pertenencia y otro de cobro.
+  `claim()` lee y escribe ese único slot.
+- `claimsCount` y el porcentaje pendiente pasaron a `uint8` y entraron en el
+  mismo slot que el estado y los tiempos, que ya se leía en cada operación.
+- El deploy cuesta más porque el contrato tiene más funciones: la ventana de
+  impugnación, `claimTo()` y las vistas nuevas. Se paga una sola vez.
+
 **Otras optimizaciones aplicadas** (además de las ya mencionadas en
 [Arquitectura](#arquitectura)):
 - Errores custom en vez de `require(string)` en todo el contrato — evita
   codificar y guardar el string del mensaje en cada revert.
-- `unchecked { ++i; }` en los dos únicos loops del contrato (dentro de
-  `_setHeirs`), porque el índice está acotado por la cantidad de
-  herederos (siempre chica) y solo el titular carga esos arrays — nunca
-  puede desbordar, así que el chequeo de overflow que Solidity 0.8 agrega
-  por defecto en cada incremento es gasto innecesario ahí.
-- `claimsCount` en vez de loopear `_heirs` en `sweepDust()` (ver
-  [Decisiones de diseño](#decisiones-de-diseño)).
-- Lecturas de storage en variables locales: `withdraw()` lee `depositBalance`
-  una sola vez y hace la resta en `unchecked`, porque el chequeo previo ya
-  descarta el underflow. Pasó de 40.116 a 39.934 de gas (−182).
-  `triggerInheritance()` emite el snapshot desde una variable local en vez de
-  releer `inheritedBalance`; ahí el optimizador ya evitaba la segunda
-  lectura, así que el cambio es de legibilidad y el gas queda igual (+2).
+- `unchecked { ++i; }` en los loops del contrato, porque el índice está
+  acotado por la cantidad de herederos (100 como máximo) — nunca puede
+  desbordar, así que el chequeo de overflow que Solidity 0.8 agrega por
+  defecto en cada incremento es gasto innecesario ahí.
+- `claimsCount` en vez de loopear los herederos para saber si
+  `cancelTrigger()` todavía es seguro (ver [Decisiones de diseño](#decisiones-de-diseño)).
+- Lecturas de storage en variables locales: los modifiers leen `status` una
+  sola vez, `withdraw()` lee el balance una sola vez, y `triggerInheritance()`
+  emite el snapshot desde una variable local en vez de releer storage.
 
 ## Decisiones de diseño
 
@@ -559,33 +628,43 @@ contrato sin nadie que pueda hacer `heartbeat()` nunca más.
 - `HeirsUpdated` emite `address[]` y `uint8[]` en paralelo en lugar de un
   array de structs, porque los eventos con arrays de structs son más caros
   y más incómodos de indexar desde el front/subgraph.
-- `receive()` solo acepta ETH si viene del titular, para que el contrato no
-  termine con fondos "fantasma" que no formaban parte de la herencia.
-- `claimsCount` (contador) reemplaza a un loop sobre `_heirs` tanto para
-  decidir si `cancelTrigger()` es seguro como para el check de "todos
-  cobraron" en `sweepDust()` — antes era `for` sobre el array, ahora es una
-  comparación directa, más barata en gas.
+- `receive()` solo acepta ETH si viene del titular y con la herencia sin
+  activar, para que no entren fondos de terceros como si fueran parte de la herencia.
+- `claimsCount` (contador) reemplaza a un loop sobre los herederos para
+  decidir si `cancelTrigger()` es seguro: es una comparación directa, más
+  barata en gas.
+- La reserva de los herederos se calcula con el porcentaje que falta cobrar
+  (`inheritedBalance × pendiente / 100`) en vez de guardar un monto por
+  heredero: un solo número, y nunca reserva de menos.
+- No se permiten herederos con 0 %: no tienen nada que cobrar y, con el
+  porcentaje como única marca de pertenencia, simplifican el storage.
+- **La herencia es de un solo uso**: una vez que los herederos cobraron, el
+  contrato queda cerrado. Para otra herencia, o para repetir una demo, se
+  despliega una instancia nueva con `npm run deploy`. Se evaluó permitir
+  "reiniciar" el contrato, y se descartó: agrega una función con poder sobre
+  los fondos en un estado donde se presume que el titular ya no está, y no
+  aporta nada que un deploy nuevo no resuelva.
 
 ## Limitaciones conocidas del MVP
 
-Comportamientos actuales que conviene conocer antes de usar el contrato con fondos reales. Los marcados con 🧪 tienen un test que los demuestra en `test/DigitalInheritance.test.js`.
+Comportamientos actuales que conviene conocer antes de usar el contrato con fondos reales.
 
 | Limitación | Efecto | Mitigación prevista |
 |---|---|---|
-| Sin ventana de gracia después del trigger 🧪 | Un heredero que sea un contrato puede activar la herencia y cobrar en la misma transacción, sin darle tiempo al titular a cancelar | Período mínimo entre la activación y el primer `claim()` |
-| Heredero que no puede recibir ETH 🧪 | Su `claim()` revierte y `sweepDust()` queda bloqueado para siempre | Retiro pendiente (pull) para esa dirección |
-| `sweepDust()` es solo del titular | Si la herencia fue real, nadie más puede recuperar el remanente | Sweep abierto a cualquiera pasado un plazo |
-| `inactivityPeriod` sin límites 🧪 | Con un plazo de 0, cualquiera puede activar la herencia en el bloque siguiente | Plazo mínimo y máximo |
-| Depósitos después del trigger 🧪 | Lo depositado con la herencia ya activada no entra en el reparto y solo sale por `sweepDust()` | Bloquear `deposit()` fuera de `ACTIVE` |
-| ETH forzado al contrato 🧪 | El ETH que entra sin pasar por `receive()`, por ejemplo con `selfdestruct`, queda atrapado | Recuperar la diferencia entre el balance real y `depositBalance` |
+| `sweepDust()` es solo del titular | Si la herencia fue real, nadie más puede recuperar los restos de redondeo, que son de pocos wei | Sweep abierto a cualquiera pasado un plazo |
+| Sin plazo máximo | El titular puede fijar un plazo de inactividad enorme, que en la práctica desactiva la herencia | Plazo máximo configurable |
+| La ventana de impugnación depende del titular | Si el titular no se entera de una activación por error durante la ventana, el primer cobro la vuelve irreversible | Avisos fuera de la cadena al titular cuando se activa la herencia |
+| Heredero que no puede firmar | Si un heredero es un contrato que no rechaza ETH pero tampoco puede llamar a `claim()`, su parte queda reservada sin que nadie la cobre. No bloquea a los demás | `forceDeliverUnclaimed()` |
 | Porcentajes enteros | Granularidad del 1 % y restos de pocos wei por redondeo | Basis points (10.000) |
 | Solo ETH | No custodia tokens ERC-20 ni NFTs | Soporte ERC-20 y ERC-721 |
 | Titular fijo, una sola clave | Si el titular pierde su clave, nadie puede hacer heartbeat, y la titularidad no se puede transferir | Recuperación social con guardianes |
 | Activación manual | Chainlink Automation ya no acepta upkeeps nuevos, así que alguien tiene que apretar "Activar herencia" | Conectar el watcher a Chainlink CRE |
 | Un watcher por herencia | Cada herencia necesita desplegar su propio `InheritanceWatcher` | Un watcher para varias herencias |
-| Reparto *pull* | Si un heredero nunca reclama, su parte queda en el contrato | `forceDeliverUnclaimed()` |
+| Reparto *pull* | Si un heredero nunca cobra, su parte queda reservada en el contrato | `forceDeliverUnclaimed()` |
 
 Todas las mitigaciones están en la [Fase 2 del roadmap](#fase-2--próximas-funciones).
+
+**Corregidas en la versión 2**, cada una con su test: la falta de ventana de gracia después de la activación, el heredero que rechaza ETH y bloqueaba el barrido, el plazo de inactividad que podía ser 0, los depósitos después de la activación y el ETH forzado que quedaba atrapado. El detalle está en [Revisión de seguridad y correcciones](#revisión-de-seguridad-y-correcciones-versión-2).
 
 ## Checklist de entrega
 
@@ -603,10 +682,12 @@ Este checklist es el mismo en ambos repos.
 **Contratos (`herencia-digital`)**
 - [x] `DigitalInheritance` con Checks-Effects-Interactions, `ReentrancyGuard`, eventos, errores custom y NatSpec completo.
 - [x] `InheritanceWatcher`: interacción entre contratos; el front activa la herencia a través de él.
-- [x] 83 tests en verde, incluidos reentrancia, contratos atacantes e integración entre los dos contratos.
-- [x] Coverage y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
+- [x] Versión 2 con las correcciones de la revisión de seguridad: ventana de impugnación, `claimTo()`, barrido sin bloqueos y plazos mínimos.
+- [x] 104 tests en verde, incluidos reentrancia, contratos atacantes, integración entre los dos contratos y un test de propiedades con escenarios aleatorios.
+- [x] Coverage del 100 % y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
 - [x] Contratos desplegados y verificados en Sepolia, con direcciones y links al código.
-- [x] Flujo completo ejecutado en Sepolia desde el front, con los hashes en el README del back.
+- [x] Flujo completo ejecutado en Sepolia con la versión 1, con los hashes en el README del back.
+- [ ] Flujo completo con la versión 2, grabado en el video, con sus hashes en el README del back.
 - [x] Scripts `demo`, `demo:cancel`, `deploy` (despliega y verifica) y `verify`.
 - [x] Limitaciones conocidas del MVP y roadmap documentados.
 
@@ -615,7 +696,7 @@ Este checklist es el mismo en ambos repos.
 - [x] **Activar herencia** a través de `InheritanceWatcher`.
 - [x] Historial de movimientos con links a Etherscan.
 - [x] Mensajes legibles para los errores del contrato y sesión de la wallet restaurada al recargar.
-- [x] Configurado para Sepolia: `.env.example` trae los contratos actuales.
+- [x] Adaptado a la versión 2: cuenta regresiva de la ventana de impugnación y `.env.example` con los contratos actuales.
 - [ ] Opcional: aplicar el sistema de diseño con el CSS mínimo necesario.
 - [ ] Opcional: publicar el front, por ejemplo en Vercel.
 
@@ -636,6 +717,7 @@ Este checklist es el mismo en ambos repos.
 - [x] Frontend web mínimo (React + ethers) en repo aparte.
 - [x] Despliegue y verificación en Sepolia.
 - [x] `InheritanceWatcher`: activa la herencia llamando a `DigitalInheritance` y es compatible con la interfaz de Chainlink Automation.
+- [x] Versión 2 tras una revisión de seguridad: ventana de impugnación, `claimTo()`, barrido sin bloqueos, plazos mínimos y test de propiedades con escenarios aleatorios.
 
 ### Fase 2 — Próximas funciones
 - Soporte para **ERC-20 y ERC-721** además de ETH nativo (depósito y reclamo
@@ -648,11 +730,10 @@ Este checklist es el mismo en ambos repos.
   hacer heartbeat antes del trigger.
 - Migrar porcentajes a **basis points (10000)** para reparto sin dust y con
   más precisión (ej. 33.33%).
-- **Corregir las [limitaciones conocidas](#limitaciones-conocidas-del-mvp)**
-  del contrato: ventana de gracia entre la activación y el primer reclamo,
-  plazo de inactividad con mínimo y máximo, `deposit()` solo en `ACTIVE`,
-  `sweepDust()` abierto a cualquiera pasado un plazo y recuperación del ETH
-  forzado. Requieren un contrato nuevo, porque el desplegado es inmutable.
+- **Resolver las [limitaciones conocidas](#limitaciones-conocidas-del-mvp)**
+  que siguen abiertas: plazo de inactividad máximo, `sweepDust()` abierto a
+  cualquiera pasado un plazo y avisos al titular cuando se activa la
+  herencia. Requieren un contrato nuevo, porque el desplegado es inmutable.
 
 **Reparto forzado tras período de gracia (`forceDeliverUnclaimed()`) — feature opcional/premium.**
 Hoy el reparto es 100% *pull*: cada heredero tiene que llamar `claim()` para
@@ -663,7 +744,7 @@ legítima: ¿qué pasa si el heredero nunca se entera y nunca reclama? La
 respuesta para Fase 2 es un mecanismo configurable, no un cambio al modelo
 por defecto:
 - Se agrega un `claimGracePeriod` (además del `inactivityPeriod`) y se
-  registra `triggeredAt`. Vencido ese plazo sin que un heredero reclame,
+  usa `triggeredAt`, que ya existe desde la versión 2. Vencido ese plazo sin que un heredero reclame,
   **cualquiera** puede llamar `forceDeliverUnclaimed()` — mismo criterio
   permissionless que ya usa `triggerInheritance()`.
 - La función intenta transferir a cada heredero pendiente, pero con
