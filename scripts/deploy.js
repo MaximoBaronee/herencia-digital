@@ -75,7 +75,6 @@ function printNextSteps(network, inheritanceAddress, watcherAddress) {
     console.log("Código en Etherscan (verificado si arriba no hubo errores):");
     console.log("  DigitalInheritance:", inheritanceUrl);
     console.log("  InheritanceWatcher:", explorerUrl(network, watcherAddress));
-    console.log(`Chainlink Automation: registrar un upkeep "Custom logic" con target ${watcherAddress}`);
   }
   console.log("Variables para el .env.local del front:");
   console.log(`  VITE_CONTRACT_ADDRESS=${inheritanceAddress}`);
@@ -138,7 +137,7 @@ async function main() {
     heirAddresses,
     percentages,
   ]);
-  // El watcher vigila la herencia recién creada; es el contrato que se registra en Chainlink Automation
+  // El watcher vigila la herencia recién creada; el front activa la herencia a través de él
   const watcher = await deployContract("InheritanceWatcher", [inheritance.address]);
 
   if (!isLocalNetwork) {

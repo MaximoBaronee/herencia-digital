@@ -96,18 +96,13 @@ Con los parámetros validados, el script:
 3. Si hay `ETHERSCAN_API_KEY`, verifica los dos contratos en Etherscan. Si la verificación falla o la key se carga después, `npm run verify -- --network sepolia` la reintenta leyendo `deployments/sepolia.json`, sin redesplegar.
 4. Imprime las URLs del código verificado y las variables para el `.env.local` del front.
 
-### ⛓️ Automatizar el trigger con Chainlink Automation
+### ⛓️ `InheritanceWatcher`: la interacción entre contratos
 
-`InheritanceWatcher` implementa la interfaz de Chainlink Automation, así que la herencia se puede activar sola apenas vence el plazo, sin que nadie tenga que estar mirando. En Sepolia es gratis: se paga con LINK de testnet.
+El botón **Activar herencia** del front no llama directo a la herencia: llama a `trigger()` del `InheritanceWatcher`, y el watcher llama a `triggerInheritance()` de `DigitalInheritance`. En Etherscan, esa transacción va dirigida al watcher y muestra dos eventos: `TriggeredViaWatcher`, del watcher, e `InheritanceTriggered`, de la herencia, con el watcher como `triggeredBy`.
 
-1. Pedir LINK de testnet para la wallet titular en [faucets.chain.link](https://faucets.chain.link/sepolia).
-2. En [automation.chain.link](https://automation.chain.link), conectar la wallet y elegir **Register new Upkeep** → **Custom logic**.
-3. Como contrato, pegar la dirección de `InheritanceWatcher`, no la de `DigitalInheritance`. El *check data* queda vacío.
-4. Completar nombre, gas limit y saldo inicial de LINK, y confirmar en MetaMask. `performUpkeep()` usa unos 60.000 de gas, así que el gas limit que sugiere la app alcanza.
+El watcher además implementa la interfaz de Chainlink Automation (`checkUpkeep` / `performUpkeep`), pensada para que un servicio externo active la herencia solo apenas vence el plazo.
 
-Desde ese momento, la red de Chainlink simula `checkUpkeep()` en cada bloque y, cuando devuelve `true`, ejecuta `performUpkeep()`, que llama a `triggerInheritance()`. En Etherscan, esa transacción muestra el evento `TriggeredViaWatcher` del watcher y el `InheritanceTriggered` de la herencia, con el watcher como `triggeredBy`.
-
-> ⚠️ Con un plazo de 600 s, el upkeep activa la herencia 10 minutos después del último heartbeat. Conviene registrarlo después de depositar, y recién cuando se quiere mostrar el trigger automático. La app de Chainlink permite pausar el upkeep mientras tanto.
+> ℹ️ Chainlink anunció la baja de Automation (lo reemplaza Chainlink Runtime Environment, CRE) y su app ya no permite registrar upkeeps nuevos. Por eso en este MVP el watcher no está registrado en Chainlink y lo dispara el front. Conectarlo a CRE queda en el [roadmap](#roadmap).
 
 ### 🧠 ¿Cómo funciona?
 
@@ -118,7 +113,7 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
                                                               │
                                   ┌───────────────────────────┘
                                   ▼
-                       🚨 triggerInheritance()   (cualquiera, o Chainlink vía InheritanceWatcher)
+                       🚨 triggerInheritance()   (cualquiera; el front pasa por InheritanceWatcher)
                                   │
                 ┌─────────────────┴──────────────────┐
                 ▼                                    ▼
@@ -132,7 +127,7 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
 | 👑 **Titular** | quien desplegó el contrato | `deposit`, `heartbeat`, `withdraw`, `setHeirs`, `setInactivityPeriod`, `cancelTrigger`, `sweepDust` |
 | 👨‍👩‍👧 **Heredero** | direcciones con un % asignado | `claim()` cuando la herencia está activada |
 | 👀 **Observador** | cualquier otra wallet | `triggerInheritance()` si el plazo venció, y leer el estado |
-| 🤖 **Automatización** | Chainlink Automation, a través de `InheritanceWatcher` | `performUpkeep()` → `triggerInheritance()` apenas vence el plazo |
+| 🤖 **Watcher** | el contrato `InheritanceWatcher` | lo usa el botón "Activar herencia" del front: `trigger()` → `triggerInheritance()` |
 
 ### 🎬 Ejemplo: el caso de Ana
 
@@ -191,7 +186,7 @@ el `inactivityPeriod` es un parámetro rígido que no distingue "me morí" de
 ```
 contracts/
   DigitalInheritance.sol      # contrato principal: custodia y reparto
-  InheritanceWatcher.sol      # vigía compatible con Chainlink Automation: llama a triggerInheritance()
+  InheritanceWatcher.sol      # vigía que llama a triggerInheritance(); interfaz de Chainlink Automation
   mocks/                      # solo para tests, no se despliegan
     ReentrancyAttacker.sol    # mock usado solo en tests de seguridad
     RejectingHeir.sol         # mock: heredero que rechaza ETH (claim falla, sweep bloqueado)
@@ -213,7 +208,7 @@ deployments/
 
 ```
 deploy → deposit → heartbeat (periódico) → ... inactividad ...
-       → triggerInheritance() (directo, o InheritanceWatcher vía Chainlink Automation)
+       → triggerInheritance() (directo, o vía InheritanceWatcher, que es lo que usa el front)
        → claim() por cada heredero
 ```
 
@@ -265,8 +260,8 @@ ACTIVE                                       TRIGGERED
 | `cancelTrigger()` | titular | `TRIGGERED`, `claimsCount == 0` | vuelve a `ACTIVE`, cuenta como heartbeat |
 | `claim()` | heredero | `TRIGGERED` | cobra su porcentaje, una sola vez |
 | `sweepDust(to)` | titular | `TRIGGERED`, todos ya cobraron | recupera el resto por redondeo |
-| `checkUpkeep()` (watcher) | Chainlink Automation, fuera de la cadena | siempre (es `view`) | devuelve `true` si la herencia ya se puede activar |
-| `performUpkeep()` / `trigger()` (watcher) | cualquiera, normalmente Chainlink Automation | `ACTIVE`, plazo vencido | llama a `triggerInheritance()` |
+| `checkUpkeep()` (watcher) | un servicio de automatización, fuera de la cadena | siempre (es `view`) | devuelve `true` si la herencia ya se puede activar |
+| `trigger()` / `performUpkeep()` (watcher) | cualquiera; el front usa `trigger()` | `ACTIVE`, plazo vencido | llama a `triggerInheritance()` |
 
 ## Instalación
 
@@ -318,7 +313,7 @@ cada paso:
 2. Depósito de 10 ETH por el titular.
 3. Heartbeat.
 4. Avance del reloj de la red (`evm_increaseTime`) para simular inactividad: `checkUpkeep()` del watcher pasa a `true`.
-5. `performUpkeep()` del watcher, como lo haría Chainlink Automation, que llama a `triggerInheritance()`.
+5. `performUpkeep()` del watcher, que llama a `triggerInheritance()`.
 6. `claim()` de cada heredero, mostrando los balances antes/después.
 
 Hay una segunda demo dedicada al escenario de falsa alarma:
@@ -511,7 +506,7 @@ Este checklist es el mismo en ambos repos.
 - [x] Contrato `DigitalInheritance` con CEI, `ReentrancyGuard`, eventos y errores custom.
 - [x] NatSpec completo en `/contracts`.
 - [x] 83 tests unitarios en verde (incluye reentrancia e integración con el watcher).
-- [x] `InheritanceWatcher` compatible con Chainlink Automation (interacción entre contratos).
+- [x] `InheritanceWatcher`: el front activa la herencia a través de él (interacción entre contratos).
 - [x] Scripts `demo`, `demo:cancel` y `deploy` (este último con herederos y plazo por variables de entorno).
 - [x] Frontend base: conexión de wallet, detección de rol, dashboard y acciones.
 
@@ -522,7 +517,7 @@ Este checklist es el mismo en ambos repos.
 - [x] Anotar la dirección desplegada en este README.
 - [x] Reemplazar en el Roadmap la app Android por el frontend web en React.
 - [ ] Redesplegar `DigitalInheritance` + `InheritanceWatcher` con el código final y verificar ambos.
-- [ ] Registrar el upkeep del watcher en Chainlink Automation.
+- [ ] Subir al front el cambio de "Activar herencia" a través del watcher (`VITE_WATCHER_ADDRESS`).
 - [ ] Ejecutar el flujo completo en Sepolia y anotar los hashes en este README.
 
 **Frontend (`front-herencia-digital`)**
@@ -545,7 +540,7 @@ Este checklist es el mismo en ambos repos.
 - [x] Documentación técnica.
 - [x] Frontend web mínimo (React + ethers) en repo aparte.
 - [x] Despliegue y verificación en Sepolia.
-- [x] `InheritanceWatcher` compatible con Chainlink Automation, para activar la herencia sola al vencer el plazo.
+- [x] `InheritanceWatcher`: activa la herencia llamando a `DigitalInheritance` y es compatible con la interfaz de Chainlink Automation.
 
 ### Fase 2 — Próximas funciones
 - Soporte para **ERC-20 y ERC-721** además de ETH nativo (depósito y reclamo
@@ -583,11 +578,13 @@ por defecto:
   herencia, el titular carga el contrato con fondos para cubrir ese gas
   futuro. La garantía de "llega solo" queda pagada por quien más le
   conviene que se cumpla, no regalada a un desconocido.
-- La primera mitad ya está en el MVP: `InheritanceWatcher` deja que
-  Chainlink Automation llame `triggerInheritance()` apenas se cumple el
-  plazo, sin esperar a que un tercero lo note. `forceDeliverUnclaimed()`
-  sería el paso siguiente, para el reparto en sí. También queda para esta
-  fase un watcher único para varias herencias (hoy es uno por herencia).
+- El MVP ya tiene la pieza on-chain: `InheritanceWatcher` implementa la
+  interfaz de Chainlink Automation. Como Chainlink dio de baja Automation
+  para upkeeps nuevos, el paso siguiente es conectarlo a su reemplazo,
+  Chainlink Runtime Environment (CRE), para que la activación ocurra sola
+  apenas se cumple el plazo. `forceDeliverUnclaimed()` sería el paso
+  siguiente, para el reparto en sí. También queda para esta fase un
+  watcher único para varias herencias (hoy es uno por herencia).
 
 **Frontend web (React + Vite + ethers v6).**
 Reemplaza la idea original de una app móvil nativa para Android: una web
