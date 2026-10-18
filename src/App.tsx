@@ -5,15 +5,21 @@ import { Badge } from "./components/Badge";
 import { Button } from "./components/Button";
 import { Card } from "./components/Card";
 import { HeirList } from "./components/HeirList";
+import { History } from "./components/History";
 import { Stat } from "./components/Stat";
 import {
   CHAIN_NAME,
   CONTRACT_ADDRESS,
+  WATCHER_ADDRESS,
   connectWallet,
   decodeError,
   formatDuration,
+  readHistory,
   readSnapshot,
+  restoreWallet,
   shortAddress,
+  triggerViaWatcher,
+  type HistoryEntry,
   type Snapshot,
 } from "./lib/inheritance";
 
@@ -28,13 +34,37 @@ export default function App() {
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [restoring, setRestoring] = useState(true);
   const [now, setNow] = useState(() => Date.now());
   const [readAt, setReadAt] = useState(() => Date.now());
+  const [history, setHistory] = useState<HistoryEntry[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const refresh = useCallback(async (c: Contract, a: string) => {
     setSnapshot(await readSnapshot(c, a));
     setReadAt(Date.now());
+    // El historial se carga aparte para no demorar el resto del dashboard
+    readHistory(c).then(
+      (entries) => {
+        setHistory(entries);
+        setHistoryError(null);
+      },
+      (error) => setHistoryError(decodeError(error)),
+    );
   }, []);
+
+  const nameOf = useCallback(
+    (address: string) => {
+      const a = address.toLowerCase();
+      const you = a === account.toLowerCase() ? " (tú)" : "";
+      if (snapshot && a === snapshot.owner.toLowerCase()) return `Titular${you}`;
+      const heirIndex = snapshot ? snapshot.heirs.findIndex((h) => h.account.toLowerCase() === a) : -1;
+      if (heirIndex >= 0) return `Heredero ${heirIndex + 1}${you}`;
+      if (WATCHER_ADDRESS && a === WATCHER_ADDRESS.toLowerCase()) return "InheritanceWatcher";
+      return `${shortAddress(address)}${you}`;
+    },
+    [snapshot, account],
+  );
 
   const connect = async () => {
     try {
@@ -60,6 +90,7 @@ export default function App() {
       setContract(null);
       setAccount("");
       setSnapshot(null);
+      setHistory(null);
     } catch (error) {
       setMessage({ kind: "error", text: decodeError(error) });
     } finally {
@@ -71,6 +102,28 @@ export default function App() {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    void restoreWallet()
+      .then(async (wallet) => {
+        if (!wallet || !active) return;
+        setContract(wallet.contract);
+        setAccount(wallet.account);
+        await refresh(wallet.contract, wallet.account);
+      })
+      .catch((error) => {
+        if (active) setMessage({ kind: "error", text: decodeError(error) });
+      })
+      .finally(() => {
+        if (active) setRestoring(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [refresh]);
 
   useEffect(() => {
     if (!window.ethereum) return;
@@ -104,7 +157,7 @@ export default function App() {
       deposit: (value: bigint) => contract!.deposit({ value }),
       withdraw: (amount: bigint) => contract!.withdraw(amount),
       heartbeat: () => contract!.heartbeat(),
-      triggerInheritance: () => contract!.triggerInheritance(),
+      triggerInheritance: () => triggerViaWatcher(contract!),
       cancelTrigger: () => contract!.cancelTrigger(),
       claim: () => contract!.claim(),
     }),
@@ -128,8 +181,8 @@ export default function App() {
               </Button>
             </>
           ) : (
-            <Button variant="primary" onClick={connect}>
-              Conectar wallet
+            <Button variant="primary" disabled={restoring} onClick={connect}>
+              {restoring ? "Restaurando wallet..." : "Conectar wallet"}
             </Button>
           )}
         </div>
@@ -163,6 +216,9 @@ export default function App() {
             <HeirList heirs={snapshot.heirs} me={account} />
           </Card>
           <Actions snapshot={snapshot} busy={busy} run={run} call={call} />
+          <Card title="Historial">
+            <History entries={history} error={historyError} nameOf={nameOf} />
+          </Card>
         </>
       )}
     </main>

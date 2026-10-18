@@ -1,10 +1,139 @@
 import { ERROR_MESSAGES } from "./errorMessages";
-import { BrowserProvider, Contract, type Eip1193Provider } from "ethers";
+import { BrowserProvider, Contract, EventLog, type Eip1193Provider } from "ethers";
 import abi from "../abi/DigitalInheritance.json";
 
 export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS as string;
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? 31337);
 export const CHAIN_NAME = (import.meta.env.VITE_CHAIN_NAME as string) ?? "Hardhat Local";
+export const WATCHER_ADDRESS = import.meta.env.VITE_WATCHER_ADDRESS as string;
+// Bloque del deploy: el historial busca eventos desde ahí. Sin él, solo mira los últimos 10.000 bloques.
+export const DEPLOY_BLOCK = Number(import.meta.env.VITE_DEPLOY_BLOCK ?? 0);
+
+const EXPLORERS: Record<number, string> = {
+  1: "https://etherscan.io",
+  11155111: "https://sepolia.etherscan.io",
+};
+
+/** Link a la transacción en el explorer de la red, o null en la red local */
+export function txUrl(txHash: string) {
+  const base = EXPLORERS[CHAIN_ID];
+  return base ? `${base}/tx/${txHash}` : null;
+}
+
+// Activa la herencia a través de InheritanceWatcher (interacción entre contratos):
+// el watcher llama a triggerInheritance() de DigitalInheritance. Usa la misma
+// wallet conectada que el contrato principal.
+export function triggerViaWatcher(contract: Contract) {
+  // Los errores son de DigitalInheritance: el watcher los propaga y así decodeError los muestra por nombre
+  const watcherAbi = [
+    "function trigger()",
+    "error TooEarly(uint256 secondsRemaining)",
+    "error InvalidState(uint8 current, uint8 required)",
+  ];
+  const watcher = new Contract(WATCHER_ADDRESS, watcherAbi, contract.runner);
+  return watcher.trigger();
+}
+
+export type HistoryKind =
+  | "deposit"
+  | "heartbeat"
+  | "heirs"
+  | "period"
+  | "triggered"
+  | "cancelled"
+  | "claimed"
+  | "withdrawn"
+  | "dust";
+
+/** Un movimiento del contrato, armado a partir de sus eventos */
+export interface HistoryEntry {
+  id: string;
+  kind: HistoryKind;
+  /** Dirección que hizo la acción (o destino, en el caso del remanente) */
+  actor?: string;
+  amount?: bigint;
+  /** Nuevo plazo en segundos, solo para "period" */
+  period?: number;
+  /** true si la herencia se activó a través de InheritanceWatcher */
+  viaWatcher: boolean;
+  /** Cuenta que llamó al watcher, cuando viaWatcher es true */
+  watcherCaller?: string;
+  timestamp: number;
+  txHash: string;
+  blockNumber: number;
+  logIndex: number;
+}
+
+/** Lee los eventos de la herencia y del watcher y devuelve los movimientos, del más nuevo al más viejo */
+export async function readHistory(contract: Contract): Promise<HistoryEntry[]> {
+  const provider = contract.runner?.provider;
+  if (!provider) return [];
+  const latest = await provider.getBlockNumber();
+  const fromBlock = DEPLOY_BLOCK > 0 ? DEPLOY_BLOCK : Math.max(0, latest - 10_000);
+
+  // Quién llamó al watcher en cada transacción, para mostrarlo en la activación
+  const callers = new Map<string, string>();
+  if (WATCHER_ADDRESS) {
+    const watcherEvents = ["event TriggeredViaWatcher(address indexed caller, uint256 timestamp)"];
+    const watcher = new Contract(WATCHER_ADDRESS, watcherEvents, provider);
+    for (const log of await watcher.queryFilter("TriggeredViaWatcher", fromBlock, latest)) {
+      if (log instanceof EventLog) callers.set(log.transactionHash, log.args.caller);
+    }
+  }
+
+  const entries: HistoryEntry[] = [];
+  for (const log of await contract.queryFilter("*", fromBlock, latest)) {
+    if (!(log instanceof EventLog)) continue;
+    const args = log.args;
+    const base = {
+      id: `${log.transactionHash}-${log.index}`,
+      viaWatcher: false,
+      timestamp: Number(args.timestamp),
+      txHash: log.transactionHash,
+      blockNumber: log.blockNumber,
+      logIndex: log.index,
+    };
+    switch (log.eventName) {
+      case "Deposited":
+        entries.push({ ...base, kind: "deposit", actor: args.from, amount: args.amount });
+        break;
+      case "Heartbeat":
+        entries.push({ ...base, kind: "heartbeat", actor: args.owner });
+        break;
+      case "HeirsUpdated":
+        entries.push({ ...base, kind: "heirs" });
+        break;
+      case "InactivityPeriodUpdated":
+        entries.push({ ...base, kind: "period", period: Number(args.newPeriod) });
+        break;
+      case "InheritanceTriggered": {
+        const viaWatcher = !!WATCHER_ADDRESS && args.triggeredBy.toLowerCase() === WATCHER_ADDRESS.toLowerCase();
+        entries.push({
+          ...base,
+          kind: "triggered",
+          actor: args.triggeredBy,
+          amount: args.totalBalance,
+          viaWatcher,
+          watcherCaller: viaWatcher ? callers.get(log.transactionHash) : undefined,
+        });
+        break;
+      }
+      case "TriggerCancelled":
+        entries.push({ ...base, kind: "cancelled", actor: args.owner });
+        break;
+      case "Claimed":
+        entries.push({ ...base, kind: "claimed", actor: args.heir, amount: args.amount });
+        break;
+      case "Withdrawn":
+        entries.push({ ...base, kind: "withdrawn", actor: args.owner, amount: args.amount });
+        break;
+      case "DustSwept":
+        entries.push({ ...base, kind: "dust", actor: args.to, amount: args.amount });
+        break;
+    }
+  }
+  return entries.sort((a, b) => b.blockNumber - a.blockNumber || b.logIndex - a.logIndex);
+}
 
 export type Role = "owner" | "heir" | "observer";
 
@@ -48,6 +177,21 @@ export async function connectWallet() {
     });
   }
   const signer = await provider.getSigner();
+  const contract = new Contract(CONTRACT_ADDRESS, abi, signer);
+  return { signer, contract, account: await signer.getAddress() };
+}
+
+export async function restoreWallet() {
+  if (!window.ethereum) return null;
+
+  const provider = new BrowserProvider(window.ethereum);
+  const accounts = (await provider.send("eth_accounts", [])) as string[];
+  if (accounts.length === 0) return null;
+
+  const network = await provider.getNetwork();
+  if (Number(network.chainId) !== CHAIN_ID) return null;
+
+  const signer = await provider.getSigner(accounts[0]);
   const contract = new Contract(CONTRACT_ADDRESS, abi, signer);
   return { signer, contract, account: await signer.getAddress() };
 }

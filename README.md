@@ -6,8 +6,9 @@ Repo del backend (contratos): https://github.com/MaximoBaronee/herencia-digital
 
 ## 🚀 Puesta en marcha
 
-> 💡 **Esto es lo único que se "enciende".** El contrato ya vive en Sepolia
-> ([`0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9`](https://sepolia.etherscan.io/address/0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9#code)), así que no necesitas levantar ningún servidor de contratos.
+> 💡 **Esto es lo único que se "enciende".** Los contratos ya viven en Sepolia, así que no necesitas levantar ningún servidor de contratos:
+> - `DigitalInheritance`: [`0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0`](https://sepolia.etherscan.io/address/0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0#code)
+> - `InheritanceWatcher`: [`0x68E5FE129B3f51e79bdCfa6eabe7019962b93422`](https://sepolia.etherscan.io/address/0x68E5FE129B3f51e79bdCfa6eabe7019962b93422#code). El botón **Activar herencia** pasa por este contrato, que llama a la herencia (interacción entre contratos).
 
 ### 🆕 Primera vez (recién clonado)
 
@@ -22,11 +23,15 @@ npm run dev                    # 3️⃣ abre http://localhost:5173
 Contenido de `.env.local` para Sepolia:
 
 ```
-VITE_CONTRACT_ADDRESS=0xF7DE6Dd4dB383cDb0E3A40eb676c0a57F1A1DCE9
+VITE_CONTRACT_ADDRESS=0xe45DB9f8f759Ad34C88C22c07BC4f09a274aa6a0
+VITE_WATCHER_ADDRESS=0x68E5FE129B3f51e79bdCfa6eabe7019962b93422
 VITE_CHAIN_ID=11155111
 VITE_CHAIN_NAME=Sepolia
 VITE_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+VITE_DEPLOY_BLOCK=11941804
 ```
+
+`VITE_WATCHER_ADDRESS` es obligatoria para el botón **Activar herencia**. `VITE_DEPLOY_BLOCK` es el bloque del deploy: desde ahí se lee la tarjeta **Historial**, que lista cada movimiento del contrato con su link a Etherscan.
 
 | Pregunta | Respuesta |
 |---|---|
@@ -42,7 +47,7 @@ VITE_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 | Solo quiero abrir la app | `npm run dev` y abrir `localhost:5173` |
 | Hice `git pull` y cambió `package.json` | `npm install` |
 | Cambié `.env.local` | Reiniciar `npm run dev` (Vite lee el `.env` al arrancar) |
-| Desplegaron un contrato nuevo | Cambiar `VITE_CONTRACT_ADDRESS` y reiniciar |
+| Desplegaron contratos nuevos | Cambiar `VITE_CONTRACT_ADDRESS`, `VITE_WATCHER_ADDRESS` y `VITE_DEPLOY_BLOCK` (están en `deployments/sepolia.json` del back) y reiniciar |
 | Cambió el código del contrato (nuevo ABI) | Regenerar el ABI (ver abajo) |
 | Quiero validar antes de entregar | `npm run lint` y `npm run build` |
 
