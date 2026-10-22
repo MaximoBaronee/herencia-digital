@@ -8,7 +8,6 @@ durante un período configurable.
 
 - 🎬 **Video de presentación y demo:** https://go.screenpal.com/watch/cO6F3knyb0S
 - 🖥️ **Repo del frontend:** https://github.com/johanriascos7777/front-herencia-digital
-- 🌐 **Front publicado:** _pendiente_
 - 📄 **Whitepaper:** _pendiente_
 
 ## 🚀 Puesta en marcha
