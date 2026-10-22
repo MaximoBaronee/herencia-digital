@@ -8,7 +8,7 @@ durante un período configurable.
 
 - 🎬 **Video de presentación y demo:** https://go.screenpal.com/watch/cO6F3knyb0S
 - 🖥️ **Repo del frontend:** https://github.com/johanriascos7777/front-herencia-digital
-- 📄 **Whitepaper:** _pendiente_
+- 📄 **Whitepaper:** [Herencia Digital con Dead Man's Switch](https://docs.google.com/document/d/16mXdqEBfH-NbUJcszAr5882WaY5QEZpf2eJ5gF5Rf88/edit?usp=sharing)
 
 ## 🚀 Puesta en marcha
 
