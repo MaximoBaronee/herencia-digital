@@ -1,10 +1,16 @@
 import { ERROR_MESSAGES, ERRORS_WITH_SECONDS } from "./errorMessages";
-import { BrowserProvider, Contract, EventLog, type Eip1193Provider } from "ethers";
+import {
+  BrowserProvider,
+  Contract,
+  EventLog,
+  type Eip1193Provider,
+} from "ethers";
 import abi from "../abi/DigitalInheritance.json";
 
 export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS as string;
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? 31337);
-export const CHAIN_NAME = (import.meta.env.VITE_CHAIN_NAME as string) ?? "Hardhat Local";
+export const CHAIN_NAME =
+  (import.meta.env.VITE_CHAIN_NAME as string) ?? "Hardhat Local";
 export const WATCHER_ADDRESS = import.meta.env.VITE_WATCHER_ADDRESS as string;
 // Bloque del deploy: el historial busca eventos desde ahí. Sin él, solo mira los últimos 10.000 bloques.
 export const DEPLOY_BLOCK = Number(import.meta.env.VITE_DEPLOY_BLOCK ?? 0);
@@ -67,25 +73,51 @@ export interface HistoryEntry {
   logIndex: number;
 }
 
+const MAX_RANGE = 9_000; // el RPC permite hasta 10.000 bloques por consulta
+
+/** queryFilter partido en tramos para no pasar el límite del RPC */
+async function queryChunked(
+  contract: Contract,
+  event: string,
+  from: number,
+  to: number,
+) {
+  const logs: Awaited<ReturnType<Contract["queryFilter"]>> = [];
+  for (let start = from; start <= to; start += MAX_RANGE) {
+    const end = Math.min(start + MAX_RANGE - 1, to);
+    logs.push(...(await contract.queryFilter(event, start, end)));
+  }
+  return logs;
+}
+
 /** Lee los eventos de la herencia y del watcher y devuelve los movimientos, del más nuevo al más viejo */
 export async function readHistory(contract: Contract): Promise<HistoryEntry[]> {
   const provider = contract.runner?.provider;
   if (!provider) return [];
   const latest = await provider.getBlockNumber();
-  const fromBlock = DEPLOY_BLOCK > 0 ? DEPLOY_BLOCK : Math.max(0, latest - 10_000);
+  const fromBlock =
+    DEPLOY_BLOCK > 0 ? DEPLOY_BLOCK : Math.max(0, latest - 10_000);
 
   // Quién llamó al watcher en cada transacción, para mostrarlo en la activación
   const callers = new Map<string, string>();
   if (WATCHER_ADDRESS) {
-    const watcherEvents = ["event TriggeredViaWatcher(address indexed caller, uint256 timestamp)"];
+    const watcherEvents = [
+      "event TriggeredViaWatcher(address indexed caller, uint256 timestamp)",
+    ];
     const watcher = new Contract(WATCHER_ADDRESS, watcherEvents, provider);
-    for (const log of await watcher.queryFilter("TriggeredViaWatcher", fromBlock, latest)) {
-      if (log instanceof EventLog) callers.set(log.transactionHash, log.args.caller);
+    for (const log of await queryChunked(
+      watcher,
+      "TriggeredViaWatcher",
+      fromBlock,
+      latest,
+    )) {
+      if (log instanceof EventLog)
+        callers.set(log.transactionHash, log.args.caller);
     }
   }
 
   const entries: HistoryEntry[] = [];
-  for (const log of await contract.queryFilter("*", fromBlock, latest)) {
+  for (const log of await queryChunked(contract, "*", fromBlock, latest)) {
     if (!(log instanceof EventLog)) continue;
     const args = log.args;
     const base = {
@@ -98,7 +130,12 @@ export async function readHistory(contract: Contract): Promise<HistoryEntry[]> {
     };
     switch (log.eventName) {
       case "Deposited":
-        entries.push({ ...base, kind: "deposit", actor: args.from, amount: args.amount });
+        entries.push({
+          ...base,
+          kind: "deposit",
+          actor: args.from,
+          amount: args.amount,
+        });
         break;
       case "Heartbeat":
         entries.push({ ...base, kind: "heartbeat", actor: args.owner });
@@ -107,20 +144,28 @@ export async function readHistory(contract: Contract): Promise<HistoryEntry[]> {
         entries.push({ ...base, kind: "heirs" });
         break;
       case "InactivityPeriodUpdated":
-        entries.push({ ...base, kind: "period", period: Number(args.newPeriod) });
+        entries.push({
+          ...base,
+          kind: "period",
+          period: Number(args.newPeriod),
+        });
         break;
       case "ClaimDelayUpdated":
         entries.push({ ...base, kind: "delay", period: Number(args.newDelay) });
         break;
       case "InheritanceTriggered": {
-        const viaWatcher = !!WATCHER_ADDRESS && args.triggeredBy.toLowerCase() === WATCHER_ADDRESS.toLowerCase();
+        const viaWatcher =
+          !!WATCHER_ADDRESS &&
+          args.triggeredBy.toLowerCase() === WATCHER_ADDRESS.toLowerCase();
         entries.push({
           ...base,
           kind: "triggered",
           actor: args.triggeredBy,
           amount: args.totalBalance,
           viaWatcher,
-          watcherCaller: viaWatcher ? callers.get(log.transactionHash) : undefined,
+          watcherCaller: viaWatcher
+            ? callers.get(log.transactionHash)
+            : undefined,
         });
         break;
       }
@@ -132,19 +177,34 @@ export async function readHistory(contract: Contract): Promise<HistoryEntry[]> {
           ...base,
           kind: "claimed",
           actor: args.heir,
-          to: args.to.toLowerCase() === args.heir.toLowerCase() ? undefined : args.to,
+          to:
+            args.to.toLowerCase() === args.heir.toLowerCase()
+              ? undefined
+              : args.to,
           amount: args.amount,
         });
         break;
       case "Withdrawn":
-        entries.push({ ...base, kind: "withdrawn", actor: args.owner, amount: args.amount });
+        entries.push({
+          ...base,
+          kind: "withdrawn",
+          actor: args.owner,
+          amount: args.amount,
+        });
         break;
       case "DustSwept":
-        entries.push({ ...base, kind: "dust", actor: args.to, amount: args.amount });
+        entries.push({
+          ...base,
+          kind: "dust",
+          actor: args.to,
+          amount: args.amount,
+        });
         break;
     }
   }
-  return entries.sort((a, b) => b.blockNumber - a.blockNumber || b.logIndex - a.logIndex);
+  return entries.sort(
+    (a, b) => b.blockNumber - a.blockNumber || b.logIndex - a.logIndex,
+  );
 }
 
 export type Role = "owner" | "heir" | "observer";
@@ -184,7 +244,8 @@ declare global {
 }
 
 export async function connectWallet() {
-  if (!window.ethereum) throw new Error("No se detectó una wallet (instala MetaMask)");
+  if (!window.ethereum)
+    throw new Error("No se detectó una wallet (instala MetaMask)");
   const provider = new BrowserProvider(window.ethereum);
   await provider.send("eth_requestAccounts", []);
   const network = await provider.getNetwork();
@@ -214,33 +275,59 @@ export async function restoreWallet() {
   return { signer, contract, account: await signer.getAddress() };
 }
 
-export async function readSnapshot(contract: Contract, account: string): Promise<Snapshot> {
-  const [owner, status, secondsLeft, inactivityPeriod, claimDelay, claimsOpenAt, contractBalance, inheritedBalance, claimsCount, heirs, triggerable, cancellable, myPercentage, myClaimed, latestBlock] =
-    await Promise.all([
-      contract.owner(),
-      contract.status(),
-      contract.timeUntilTrigger(),
-      contract.inactivityPeriod(),
-      contract.claimDelay(),
-      contract.claimsOpenAt(),
-      contract.contractBalance(),
-      contract.inheritedBalance(),
-      contract.claimsCount(),
-      contract.getHeirs(),
-      contract.isTriggerable(),
-      contract.canCancelTrigger(),
-      contract.percentageOf(account),
-      contract.claimed(account),
-      contract.runner?.provider?.getBlock("latest"),
-    ]);
+export async function readSnapshot(
+  contract: Contract,
+  account: string,
+): Promise<Snapshot> {
+  const [
+    owner,
+    status,
+    secondsLeft,
+    inactivityPeriod,
+    claimDelay,
+    claimsOpenAt,
+    contractBalance,
+    inheritedBalance,
+    claimsCount,
+    heirs,
+    triggerable,
+    cancellable,
+    myPercentage,
+    myClaimed,
+    latestBlock,
+  ] = await Promise.all([
+    contract.owner(),
+    contract.status(),
+    contract.timeUntilTrigger(),
+    contract.inactivityPeriod(),
+    contract.claimDelay(),
+    contract.claimsOpenAt(),
+    contract.contractBalance(),
+    contract.inheritedBalance(),
+    contract.claimsCount(),
+    contract.getHeirs(),
+    contract.isTriggerable(),
+    contract.canCancelTrigger(),
+    contract.percentageOf(account),
+    contract.claimed(account),
+    contract.runner?.provider?.getBlock("latest"),
+  ]);
 
   const role: Role =
-    owner.toLowerCase() === account.toLowerCase() ? "owner" : Number(myPercentage) > 0 ? "heir" : "observer";
+    owner.toLowerCase() === account.toLowerCase()
+      ? "owner"
+      : Number(myPercentage) > 0
+        ? "heir"
+        : "observer";
 
   const triggered = Number(status) === 1;
   // La ventana se mide contra el reloj de la cadena, no el de la compu
-  const chainNow = latestBlock ? latestBlock.timestamp : Math.floor(Date.now() / 1000);
-  const claimsSecondsLeft = triggered ? Math.max(0, Number(claimsOpenAt) - chainNow) : 0;
+  const chainNow = latestBlock
+    ? latestBlock.timestamp
+    : Math.floor(Date.now() / 1000);
+  const claimsSecondsLeft = triggered
+    ? Math.max(0, Number(claimsOpenAt) - chainNow)
+    : 0;
 
   return {
     owner,
@@ -275,7 +362,9 @@ export function formatDuration(totalSeconds: number) {
   const h = Math.floor((totalSeconds % 86400) / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
-  return [d && `${d}d`, (d || h) && `${h}h`, (d || h || m) && `${m}m`, `${s}s`].filter(Boolean).join(" ");
+  return [d && `${d}d`, (d || h) && `${h}h`, (d || h || m) && `${m}m`, `${s}s`]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function decodeError(error: unknown): string {
@@ -295,5 +384,13 @@ export function decodeError(error: unknown): string {
     }
     return ERROR_MESSAGES[name];
   }
-  return name ?? e.reason ?? e.info?.error?.message ?? e.error?.message ?? e.shortMessage ?? e.message ?? "Error desconocido";
+  return (
+    name ??
+    e.reason ??
+    e.info?.error?.message ??
+    e.error?.message ??
+    e.shortMessage ??
+    e.message ??
+    "Error desconocido"
+  );
 }
