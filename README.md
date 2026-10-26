@@ -146,14 +146,14 @@ Un **testamento automático**: el titular deja ETH en el contrato y confirma cad
 
 > Ana (titular) deja **1 ETH** para sus hermanos **Bruno (60 %)** y **Carla (40 %)**, con un plazo de **30 días** de inactividad y una ventana de impugnación de **7 días**.
 
-| Día | Qué pasa                                                                                                                   |      Estado      |
-| :-: | -------------------------------------------------------------------------------------------------------------------------- | :--------------: |
-|  0  | Ana despliega el contrato y llama `deposit()` con 1 ETH                                                                    |    🟢 ACTIVE     |
-| 10  | Ana llama `heartbeat()`: el reloj de 30 días **vuelve a empezar**                                                          |    🟢 ACTIVE     |
-| 40  | Ana no responde: pasaron más de 30 días desde su último heartbeat                                                          | 🟡 plazo vencido |
-| 41  | Carla (o cualquiera) llama `triggerInheritance()`: el balance de 1 ETH queda congelado y empieza la ventana de impugnación |   🔴 TRIGGERED   |
-| 48  | Se cierra la ventana: Bruno llama `claim()` y recibe **0.6 ETH**                                                           |   🔴 TRIGGERED   |
-| 49  | Carla llama `claim()` y recibe **0.4 ETH**                                                                                 |   🔴 TRIGGERED   |
+| Día | Qué pasa                                                                                                                   |      Estado       |
+| :-: | -------------------------------------------------------------------------------------------------------------------------- | :---------------: |
+|  0  | Ana despliega el contrato y llama `deposit()` con 1 ETH                                                                    |     🟢 ACTIVE     |
+| 10  | Ana llama `heartbeat()`: el reloj de 30 días **vuelve a empezar**                                                          |     🟢 ACTIVE     |
+| 40  | Ana no responde: se cumplen los 30 días desde su último heartbeat                                                          | 🟡 plazo cumplido |
+| 41  | Carla (o cualquiera) llama `triggerInheritance()`: el balance de 1 ETH queda congelado y empieza la ventana de impugnación |   🔴 TRIGGERED    |
+| 48  | Se cierra la ventana: Bruno llama `claim()` y recibe **0.6 ETH**                                                           |   🔴 TRIGGERED    |
+| 49  | Carla llama `claim()` y recibe **0.4 ETH**                                                                                 |   🔴 TRIGGERED    |
 
 **¿Y si fue una falsa alarma?** Durante la ventana de impugnación, del día 41 al 48, nadie puede cobrar: si Ana vuelve, llama `cancelTrigger()` y todo regresa a 🟢 ACTIVE sin perder fondos. Pero **en cuanto un heredero cobra, ya no hay vuelta atrás**.
 
@@ -626,7 +626,9 @@ contrato sin nadie que pueda hacer `heartbeat()` nunca más.
 
 **Versión 2: menos storage.** Las correcciones de la versión 2 también
 bajaron el gas de casi todas las operaciones. Promedios de la suite de tests,
-salvo donde se indica:
+salvo donde se indica. Es una corrida distinta de la tabla anterior (la suite
+cambió entre una y otra), por eso `setHeirs()` y `withdraw()` de la versión 1
+difieren apenas de los valores de esa tabla:
 
 | Función                         | Versión 1 | Versión 2 |              Diferencia |
 | ------------------------------- | --------: | --------: | ----------------------: |
