@@ -34,6 +34,19 @@ npm run demo         # 3️⃣ opcional: flujo completo en una red local en memo
 | ¿Necesito internet?         | Solo para `npm install` y para desplegar o verificar.                                                                                 |
 | ¿Qué carpetas se generan?   | `artifacts/`, `cache/` y `node_modules/`. Están ignoradas por git.                                                                    |
 
+### 🖥️ Levantar el frontend
+
+El front está en la carpeta [`frontend/`](frontend) y se conecta a los contratos ya desplegados en Sepolia:
+
+```bash
+cd frontend
+cp .env.example .env.local     # ya trae los contratos de Sepolia, no hay que editar nada
+npm install
+npm run dev                    # abre http://localhost:5173
+```
+
+Se usa con MetaMask en la red Sepolia. El detalle (roles, historial e incidencias) está en [`frontend/README.md`](frontend/README.md).
+
 ### 🔁 Segunda vez en adelante
 
 | Situación                                         | Qué hacer                                                                                                           |
@@ -44,7 +57,7 @@ npm run demo         # 3️⃣ opcional: flujo completo en una red local en memo
 | Quiero una demo sin gastar ETH                    | `npm run demo` o `npm run demo:cancel`                                                                              |
 | Quiero ver la cobertura de tests                  | `npm run coverage`                                                                                                  |
 | Quiero correr el análisis estático                | `npm run slither` (requiere Python y `pip install slither-analyzer`)                                                |
-| Quiero contratos nuevos en Sepolia                | `npm run deploy -- --network sepolia` (despliega y verifica los dos) y luego actualizar las direcciones en el front |
+| Quiero contratos nuevos en Sepolia                | `npm run deploy -- --network sepolia` (despliega y verifica los dos) y luego actualizar las direcciones en `frontend/.env.local` |
 | La verificación falló o cargué la API key después | `npm run verify -- --network sepolia` (no redespliega)                                                              |
 
 **🚫 Qué NO hacer**
@@ -104,7 +117,7 @@ Con los parámetros validados, el script:
 1. Despliega `DigitalInheritance` y después `InheritanceWatcher`, apuntando al primero.
 2. Espera 5 confirmaciones y guarda direcciones, argumentos del constructor y hashes en `deployments/sepolia.json`.
 3. Si hay `ETHERSCAN_API_KEY`, verifica los dos contratos en Etherscan. Si la verificación falla o la key se carga después, `npm run verify -- --network sepolia` la reintenta leyendo `deployments/sepolia.json`, sin redesplegar.
-4. Imprime las URLs del código verificado y las variables para el `.env.local` del front.
+4. Imprime las URLs del código verificado y las variables para `frontend/.env.local`.
 
 ### ⛓️ `InheritanceWatcher`: la interacción entre contratos
 
@@ -733,10 +746,10 @@ Estructura del proyecto, en un único repositorio:
 - [x] `InheritanceWatcher`: interacción entre contratos; el front activa la herencia a través de él.
 - [x] Versión 2 con las correcciones de la revisión de seguridad: ventana de impugnación, `claimTo()`, barrido sin bloqueos y plazos mínimos.
 - [x] 104 tests en verde, incluidos reentrancia, contratos atacantes, integración entre los dos contratos y un test de propiedades con escenarios aleatorios.
-- [x] Coverage del 100 % y Slither ejecutados, con resultados y hallazgos justificados en el README del back.
+- [x] Coverage del 100 % y Slither ejecutados, con resultados y hallazgos justificados en este README.
 - [x] Contratos desplegados y verificados en Sepolia, con direcciones y links al código.
-- [x] Flujo completo ejecutado en Sepolia con la versión 1, con los hashes en el README del back.
-- [x] Flujo completo con la versión 2, grabado en el video, con sus hashes en el README del back.
+- [x] Flujo completo ejecutado en Sepolia con la versión 1, con los hashes en este README.
+- [x] Flujo completo con la versión 2, grabado en el video, con sus hashes en este README.
 - [x] Scripts `demo`, `demo:cancel`, `deploy` (despliega y verifica) y `verify`.
 - [x] Limitaciones conocidas del MVP y roadmap documentados.
 
